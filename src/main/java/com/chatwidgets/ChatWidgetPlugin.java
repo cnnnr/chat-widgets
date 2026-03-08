@@ -1,5 +1,7 @@
 package com.chatwidgets;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.google.inject.Provides;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
@@ -16,31 +18,91 @@ import net.runelite.api.gameval.VarClientID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.ChatColorConfig;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.PluginManager;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.OverlayPosition;
+import net.runelite.client.util.ImageUtil;
 
 import javax.inject.Inject;
+import java.awt.image.BufferedImage;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 
-@PluginDescriptor(name = "Chat Widgets", description = "Displays game and private chat messages in customizable overlay widgets.", tags = {
-        "game", "private", "chat", "pm", "message", "widget", "overlay", "split", "move", "custom", "customize",
-        "resizable", "transparent" })
+@PluginDescriptor(name = "Chat Widgets", description = "Displays chat messages in customizable overlay widgets.", tags = {
+        "game", "private", "public", "clan", "friends", "chat", "pm", "message", "widget", "overlay", "split",
+        "move", "custom", "customize", "resizable", "transparent" })
 public class ChatWidgetPlugin extends Plugin {
+
+    private static final String CONFIG_GROUP = "chatwidgets";
+    private static final String OVERLAY_CONFIGS_KEY = "overlayConfigs";
+    private static final int MAX_POOL_SIZE = 200;
 
     private static final Pattern BOSS_KC_PATTERN = Pattern.compile("Your .+ count is:");
 
     private static final MessageMergeRule[] MESSAGE_MERGE_RULES = {
             new MessageMergeRule("You eat", "It heals some health.", true),
-            new MessageMergeRule("You drink", "You have", false)
+            new MessageMergeRule("You drink", Pattern.compile("You have [0-9].*")),
+            new MessageMergeRule("You are now a guest of", "To talk, start each", true),
+            new MessageMergeRule("You drink", "You have finished your potion.", true)
     };
+
+    private static final Set<ChatMessageType> PM_TYPES = EnumSet.of(
+            ChatMessageType.PRIVATECHAT,
+            ChatMessageType.PRIVATECHATOUT,
+            ChatMessageType.MODPRIVATECHAT
+    );
+
+    private static final Set<ChatMessageType> SENDER_TYPES = EnumSet.of(
+            ChatMessageType.PRIVATECHAT,
+            ChatMessageType.PRIVATECHATOUT,
+            ChatMessageType.MODPRIVATECHAT,
+            ChatMessageType.PUBLICCHAT,
+            ChatMessageType.MODCHAT,
+            ChatMessageType.AUTOTYPER,
+            ChatMessageType.MODAUTOTYPER,
+            ChatMessageType.FRIENDSCHAT,
+            ChatMessageType.CLAN_CHAT,
+            ChatMessageType.CLAN_GUEST_CHAT,
+            ChatMessageType.CLAN_GIM_CHAT
+    );
+
+    /** All message types the plugin will capture into the shared pool. */
+    private static final Set<ChatMessageType> ALL_SUPPORTED_TYPES = EnumSet.of(
+            // Game
+            ChatMessageType.GAMEMESSAGE, ChatMessageType.SPAM, ChatMessageType.CONSOLE,
+            ChatMessageType.WELCOME, ChatMessageType.BROADCAST, ChatMessageType.DIDYOUKNOW,
+            ChatMessageType.ENGINE, ChatMessageType.UNKNOWN,
+            ChatMessageType.PLAYERRELATED, ChatMessageType.SNAPSHOTFEEDBACK,
+            ChatMessageType.FRIENDNOTIFICATION, ChatMessageType.FRIENDSCHATNOTIFICATION,
+            ChatMessageType.IGNORENOTIFICATION,
+            ChatMessageType.ITEM_EXAMINE, ChatMessageType.NPC_EXAMINE, ChatMessageType.OBJECT_EXAMINE,
+            ChatMessageType.CLAN_MESSAGE, ChatMessageType.CLAN_GUEST_MESSAGE,
+            ChatMessageType.CLAN_GIM_MESSAGE, ChatMessageType.CLAN_CREATION_INVITATION,
+            // Trade
+            ChatMessageType.TRADE, ChatMessageType.TRADE_SENT, ChatMessageType.TRADEREQ,
+            ChatMessageType.CHALREQ_TRADE, ChatMessageType.CHALREQ_FRIENDSCHAT,
+            // Public
+            ChatMessageType.PUBLICCHAT, ChatMessageType.MODCHAT,
+            ChatMessageType.AUTOTYPER, ChatMessageType.MODAUTOTYPER,
+            // Friends chat
+            ChatMessageType.FRIENDSCHAT,
+            // Clan
+            ChatMessageType.CLAN_CHAT, ChatMessageType.CLAN_GUEST_CHAT, ChatMessageType.CLAN_GIM_CHAT,
+            ChatMessageType.CHALREQ_CLANCHAT,
+            // Private
+            ChatMessageType.PRIVATECHAT, ChatMessageType.PRIVATECHATOUT, ChatMessageType.MODPRIVATECHAT,
+            ChatMessageType.LOGINLOGOUTNOTIFICATION
+    );
 
     @Inject
     private Client client;
@@ -49,91 +111,381 @@ public class ChatWidgetPlugin extends Plugin {
     private ChatWidgetConfig config;
 
     @Inject
+    private ConfigManager configManager;
+
+    @Inject
     private OverlayManager overlayManager;
 
     @Inject
-    private GameChatOverlay gameOverlay;
+    private ClientToolbar clientToolbar;
 
     @Inject
-    private PrivateChatOverlay privateOverlay;
+    private ChatColorConfig chatColorConfig;
 
-    private final CopyOnWriteArrayList<WidgetMessage> gameMessages = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<WidgetMessage> privateMessages = new CopyOnWriteArrayList<>();
+    @Inject
+    private Gson gson;
+
+    // Shared message pool
+    private final CopyOnWriteArrayList<WidgetMessage> messages = new CopyOnWriteArrayList<>();
+
+    // Dynamic overlays
+    private final List<OverlayConfig> overlayConfigs = new ArrayList<>();
+    private final List<DynamicChatOverlay> overlays = new ArrayList<>();
+
+    private NavigationButton navButton;
+    private ChatWidgetPanel panel;
+    private boolean pmWidgetsHidden = false;
 
     @Override
     protected void startUp() {
-        overlayManager.add(gameOverlay);
-        overlayManager.add(privateOverlay);
+        loadOverlayConfigs();
 
-        if (config.enablePrivateMessages()) {
-            hidePmWidgets();
+        for (OverlayConfig oc : overlayConfigs) {
+            addOverlay(oc);
         }
+
+        updatePmWidgetVisibility();
+
+        panel = new ChatWidgetPanel(this);
+        BufferedImage icon;
+        try {
+            icon = ImageUtil.loadImageResource(getClass(), "/chat_icon.png");
+        } catch (Exception e) {
+            icon = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+        }
+        navButton = NavigationButton.builder()
+                .tooltip("Chat Widgets")
+                .icon(icon)
+                .priority(10)
+                .panel(panel)
+                .build();
+        clientToolbar.addNavigation(navButton);
     }
 
     @Override
     protected void shutDown() {
-        overlayManager.remove(gameOverlay);
-        overlayManager.remove(privateOverlay);
-        //keep history for now i think
-        //clearGameMessages();
-        //clearPrivateMessages();
-        showPmWidgets();
-    }
+        for (DynamicChatOverlay overlay : overlays) {
+            overlayManager.remove(overlay);
+        }
+        overlays.clear();
 
-    @Subscribe
-    public void onConfigChanged(ConfigChanged event) {
-        if (!event.getGroup().equals("chatwidgets")) {
-            return;
+        if (pmWidgetsHidden) {
+            setPmWidgetsHidden(false);
         }
 
-        if (event.getKey().equals("enablePrivateMessages")) {
-            if (config.enablePrivateMessages()) {
-                hidePmWidgets();
-            } else {
-                showPmWidgets();
+        if (navButton != null) {
+            clientToolbar.removeNavigation(navButton);
+        }
+    }
+
+    // --- Overlay config management ---
+
+    public List<OverlayConfig> getOverlayConfigs() {
+        return overlayConfigs;
+    }
+
+    public void addNewOverlay() {
+        OverlayConfig oc = new OverlayConfig();
+        overlayConfigs.add(oc);
+        addOverlay(oc);
+        saveOverlayConfigs();
+        if (panel != null) {
+            panel.rebuild();
+        }
+    }
+
+    public void removeOverlay(OverlayConfig oc) {
+        overlayConfigs.remove(oc);
+        DynamicChatOverlay toRemove = null;
+        for (DynamicChatOverlay overlay : overlays) {
+            if (overlay.getOverlayConfig() == oc) {
+                toRemove = overlay;
+                break;
             }
         }
-
-        if (event.getKey().equals("swapStackingOrder")) {
-            overlayManager.remove(gameOverlay);
-            overlayManager.remove(privateOverlay);
-            overlayManager.add(gameOverlay);
-            overlayManager.add(privateOverlay);
+        if (toRemove != null) {
+            overlayManager.remove(toRemove);
+            overlays.remove(toRemove);
+        }
+        saveOverlayConfigs();
+        updatePmWidgetVisibility();
+        if (panel != null) {
+            panel.rebuild();
         }
     }
+
+    public void onOverlayConfigChanged() {
+        saveOverlayConfigs();
+        updatePmWidgetVisibility();
+        for (DynamicChatOverlay overlay : overlays) {
+            overlay.setOverlayConfig(overlay.getOverlayConfig());
+        }
+    }
+
+    private void addOverlay(OverlayConfig oc) {
+        DynamicChatOverlay overlay = new DynamicChatOverlay(this, config, client,
+                chatColorConfig, oc);
+        overlays.add(overlay);
+        overlayManager.add(overlay);
+    }
+
+    // --- Persistence ---
+
+    private void loadOverlayConfigs() {
+        overlayConfigs.clear();
+        String json = configManager.getConfiguration(CONFIG_GROUP, OVERLAY_CONFIGS_KEY);
+        if (json != null && !json.isEmpty()) {
+            try {
+                Type listType = new TypeToken<List<OverlayConfig>>() {}.getType();
+                List<OverlayConfig> loaded = gson.fromJson(json, listType);
+                if (loaded != null && !loaded.isEmpty()) {
+                    overlayConfigs.addAll(loaded);
+                    return;
+                }
+            } catch (Exception e) {
+                // Fall through to defaults
+            }
+        }
+        // First run — create defaults
+        overlayConfigs.add(OverlayConfig.defaultGameOverlay());
+        overlayConfigs.add(OverlayConfig.defaultPrivateOverlay());
+        saveOverlayConfigs();
+    }
+
+    public void saveOverlayConfigs() {
+        String json = gson.toJson(overlayConfigs);
+        configManager.setConfiguration(CONFIG_GROUP, OVERLAY_CONFIGS_KEY, json);
+    }
+
+    // --- PM widget visibility ---
+
+    private void updatePmWidgetVisibility() {
+        boolean shouldHide = false;
+        for (OverlayConfig oc : overlayConfigs) {
+            for (ChatMessageType type : oc.getMessageTypes()) {
+                if (PM_TYPES.contains(type)) {
+                    shouldHide = true;
+                    break;
+                }
+            }
+            if (shouldHide) break;
+        }
+        if (shouldHide != pmWidgetsHidden) {
+            setPmWidgetsHidden(shouldHide);
+            pmWidgetsHidden = shouldHide;
+        }
+    }
+
+    // --- Event handlers ---
 
     @Subscribe
     public void onGameStateChanged(GameStateChanged event) {
-        if (event.getGameState() == GameState.LOGIN_SCREEN) {
-            //keep history for now i think
-            // clearGameMessages();
-        }
-        if (event.getGameState() == GameState.LOGGED_IN && config.enablePrivateMessages()) {
-            hidePmWidgets();
+        if (event.getGameState() == GameState.LOGGED_IN) {
+            updatePmWidgetVisibility();
         }
     }
 
     @Subscribe
     public void onWidgetLoaded(WidgetLoaded event) {
-        if (event.getGroupId() == InterfaceID.PM_CHAT && config.enablePrivateMessages()) {
-            hidePmWidgets();
+        if (event.getGroupId() == InterfaceID.PM_CHAT && pmWidgetsHidden) {
+            setPmWidgetsHidden(true);
         }
     }
 
     @Subscribe
     public void onVarClientIntChanged(VarClientIntChanged event) {
         if (event.getIndex() == VarClientID.CHAT_VIEW) {
-            updateSmartPosition(gameOverlay);
-            updateSmartPosition(privateOverlay);
+            for (DynamicChatOverlay overlay : overlays) {
+                updateSmartPosition(overlay);
+            }
         }
     }
 
     @Subscribe
     public void onResizeableChanged(ResizeableChanged event) {
-        updateDefaultPosition(gameOverlay);
-        updateDefaultPosition(privateOverlay);
-        updateSmartPosition(gameOverlay);
-        updateSmartPosition(privateOverlay);
+        for (DynamicChatOverlay overlay : overlays) {
+            updateDefaultPosition(overlay);
+            updateSmartPosition(overlay);
+        }
+    }
+
+    @Subscribe
+    public void onMenuOptionClicked(MenuOptionClicked event) {
+        String option = event.getMenuOption();
+        String target = event.getMenuTarget();
+        if (option == null || target == null || !option.equals("Clear")) {
+            return;
+        }
+
+        if (target.endsWith(" history")) {
+            String overlayName = target.substring(0, target.length() - " history".length());
+            for (OverlayConfig oc : overlayConfigs) {
+                if (oc.getName().equals(overlayName)) {
+                    clearMessagesForTypes(oc.getMessageTypes());
+                    return;
+                }
+            }
+        }
+    }
+
+    @Subscribe
+    public void onChatMessage(ChatMessage event) {
+        ChatMessageType type = event.getType();
+
+        if (!ALL_SUPPORTED_TYPES.contains(type)) {
+            return;
+        }
+
+        String message = event.getMessage();
+        if (message == null || message.trim().isEmpty()) {
+            return;
+        }
+        message = message.trim();
+
+        String sender = cleanSender(event.getName());
+        boolean isOutgoing = type == ChatMessageType.PRIVATECHATOUT;
+        boolean isBossKc = BOSS_KC_PATTERN.matcher(message).find();
+
+        // Handle message merging for game-type messages
+        if (!SENDER_TYPES.contains(type) && type != ChatMessageType.LOGINLOGOUTNOTIFICATION) {
+            for (MessageMergeRule rule : MESSAGE_MERGE_RULES) {
+                if (rule.matchesPreviousPrefix(message)) {
+                    message = message.replace("<br>", " ");
+                    break;
+                }
+            }
+
+            if (!messages.isEmpty()) {
+                WidgetMessage lastMsg = messages.get(messages.size() - 1);
+                String merged = tryMergeMessages(lastMsg.getMessage(), message);
+                if (merged != null) {
+                    WidgetMessage mergedMsg = WidgetMessage.gameMessage(
+                            merged, System.currentTimeMillis(), lastMsg.getType(), lastMsg.isBossKc());
+                    messages.set(messages.size() - 1, mergedMsg);
+                    return;
+                }
+            }
+        }
+
+        // Handle login notifications with custom fade
+        if (type == ChatMessageType.LOGINLOGOUTNOTIFICATION) {
+            int maxFade = 5;
+            messages.add(WidgetMessage.loginNotification(
+                    sender != null ? sender : "System", message, System.currentTimeMillis(), maxFade));
+        } else if (SENDER_TYPES.contains(type)) {
+            messages.add(WidgetMessage.senderMessage(
+                    sender != null ? sender : "Unknown", message, System.currentTimeMillis(), type, isOutgoing));
+        } else {
+            messages.add(WidgetMessage.gameMessage(message, System.currentTimeMillis(), type, isBossKc));
+        }
+
+        while (messages.size() > MAX_POOL_SIZE) {
+            messages.remove(0);
+        }
+    }
+
+    // --- Message access for overlays ---
+
+    public List<WidgetMessage> getMessagesForOverlay(OverlayConfig overlayConfig) {
+        Set<ChatMessageType> types = overlayConfig.getMessageTypes();
+        int size = messages.size();
+        if (size == 0 || types.isEmpty()) {
+            return new ArrayList<>(0);
+        }
+
+        long currentTime = System.currentTimeMillis();
+        int fadeOutDuration = overlayConfig.getFadeOutDuration();
+        long fadeOutThreshold = fadeOutDuration > 0 ? (fadeOutDuration * 2000L) + 2000 : 0;
+        boolean gameFilterEnabled = isGameFilterEnabled();
+        boolean bossKcFilterEnabled = isBossKcFilterEnabled();
+
+        int maxMessages = overlayConfig.getMaxMessages();
+        List<WidgetMessage> filtered = new ArrayList<>(maxMessages);
+        int msgCount = 0;
+
+        for (int i = size - 1; i >= 0; i--) {
+            WidgetMessage msg = messages.get(i);
+
+            if (!types.contains(msg.getType())) {
+                continue;
+            }
+
+            if (fadeOutThreshold > 0) {
+                int msgMaxFade = msg.getMaxFadeSeconds();
+                long threshold = msgMaxFade > 0 ? (msgMaxFade * 1000L) + 2000 : fadeOutThreshold;
+                if (currentTime - msg.getTimestamp() >= threshold) {
+                    continue;
+                }
+            }
+
+            if (gameFilterEnabled && msg.getType() == ChatMessageType.SPAM) {
+                continue;
+            }
+
+            if (bossKcFilterEnabled && msg.isBossKc()) {
+                continue;
+            }
+
+            // Login notifications don't count against max
+            boolean isLoginNotification = msg.getType() == ChatMessageType.LOGINLOGOUTNOTIFICATION;
+            if (!isLoginNotification && msgCount >= maxMessages) {
+                continue;
+            }
+
+            filtered.add(0, msg);
+            if (!isLoginNotification) {
+                msgCount++;
+            }
+        }
+
+        return filtered;
+    }
+
+    public void clearMessagesForTypes(Set<ChatMessageType> types) {
+        messages.removeIf(msg -> types.contains(msg.getType()));
+    }
+
+    public void clearAllMessages() {
+        messages.clear();
+    }
+
+    // --- Utility ---
+
+    private String cleanSender(String name) {
+        if (name == null) {
+            return null;
+        }
+        return name.replace('\u00A0', ' ').trim();
+    }
+
+    private String tryMergeMessages(String previousMessage, String newMessage) {
+        for (MessageMergeRule rule : MESSAGE_MERGE_RULES) {
+            if (rule.matches(previousMessage, newMessage)) {
+                return rule.merge(previousMessage, newMessage);
+            }
+        }
+        return null;
+    }
+
+    public boolean isChatboxHidden() {
+        return isChatboxMinimized() || isChatboxWidgetHidden();
+    }
+
+    private boolean isChatboxMinimized() {
+        return client.getVarcIntValue(VarClientID.CHAT_VIEW) == 1337;
+    }
+
+    private boolean isChatboxWidgetHidden() {
+        Widget chatboxWidget = client.getWidget(InterfaceID.Chatbox.CHATAREA);
+        return (chatboxWidget != null && chatboxWidget.isHidden());
+    }
+
+    public boolean isGameFilterEnabled() {
+        return client.getVarbitValue(VarbitID.GAME_FILTER) == 1;
+    }
+
+    public boolean isBossKcFilterEnabled() {
+        return client.getVarbitValue(VarbitID.BOSS_KILLCOUNT_FILTERED) == 1;
     }
 
     private void updateDefaultPosition(net.runelite.client.ui.overlay.Overlay overlay) {
@@ -157,7 +509,6 @@ public class ChatWidgetPlugin extends Plugin {
         }
 
         OverlayPosition targetPos;
-
         if (!client.isResized()) {
             targetPos = OverlayPosition.BOTTOM_LEFT;
         } else if (isChatboxHidden()) {
@@ -178,402 +529,29 @@ public class ChatWidgetPlugin extends Plugin {
                 || position == OverlayPosition.CANVAS_TOP_RIGHT;
     }
 
-    @Subscribe
-    public void onMenuOptionClicked(MenuOptionClicked event) {
-        String option = event.getMenuOption();
-        String target = event.getMenuTarget();
-        if (option == null) {
-            return;
-        }
-
-        if (option.contains("Game:") && option.contains("Clear")) {
-            clearGameMessages();
-            return;
-        }
-        if (option.contains("Private:") && option.contains("Clear")) {
-            clearPrivateMessages();
-            return;
-        }
-
-        if (option.equals("Clear") && target != null) {
-            switch (target) {
-                case "Merged chat history":
-                    clearGameMessages();
-                    clearPrivateMessages();
-                    break;
-                case "Game chat history":
-                    clearGameMessages();
-                    break;
-                case "Private chat history":
-                    clearPrivateMessages();
-                    break;
-            }
-        }
-    }
-
-    @Subscribe
-    public void onChatMessage(ChatMessage event) {
-        ChatMessageType type = event.getType();
-
-        switch (type) {
-            case GAMEMESSAGE:
-            case SPAM:
-            case CONSOLE:
-            case WELCOME:
-            case BROADCAST:
-            case DIDYOUKNOW:
-            case ENGINE:
-            case FRIENDNOTIFICATION:
-            case FRIENDSCHATNOTIFICATION:
-            case IGNORENOTIFICATION:
-            case ITEM_EXAMINE:
-            case NPC_EXAMINE:
-            case OBJECT_EXAMINE:
-            case PLAYERRELATED:
-            case SNAPSHOTFEEDBACK:
-            case TRADE:
-            case TRADE_SENT:
-            case TRADEREQ:
-            case UNKNOWN: //combat achievements-related?
-                handleGameMessage(event);
-                break;
-
-            case PRIVATECHAT:
-            case PRIVATECHATOUT:
-            case MODPRIVATECHAT:
-                handlePrivateMessage(event);
-                break;
-
-            case LOGINLOGOUTNOTIFICATION:
-                handleLoginLogoutNotification(event);
-                break;
-
-            default:
-                break;
-        }
-    }
-
-    private void handleGameMessage(ChatMessage event) {
-        String message = event.getMessage();
-        if (message == null || message.trim().isEmpty()) {
-            return;
-        }
-
-        String cleanMessage = message.trim();
-        for (MessageMergeRule rule : MESSAGE_MERGE_RULES) {
-            if (rule.matchesPreviousPrefix(cleanMessage)) {
-                cleanMessage = cleanMessage.replace("<br>", " ");
-                break;
-            }
-        }
-        boolean isBossKc = BOSS_KC_PATTERN.matcher(cleanMessage).find();
-
-        if (!gameMessages.isEmpty()) {
-            WidgetMessage lastMsg = gameMessages.get(gameMessages.size() - 1);
-            String merged = tryMergeMessages(lastMsg.getMessage(), cleanMessage);
-            if (merged != null) {
-                String mergedStripped = stripTags(merged);
-                int existingCount = 0;
-
-                if (config.collapseGameChat()) {
-                    for (int i = gameMessages.size() - 2; i >= 0; i--) {
-                        WidgetMessage existing = gameMessages.get(i);
-                        if (stripTags(existing.getMessage()).equals(mergedStripped)) {
-                            existingCount = existing.getCount();
-                            gameMessages.remove(i);
-                            break;
-                        }
-                    }
-                }
-
-                WidgetMessage mergedMsg = WidgetMessage.gameMessage(
-                        merged, System.currentTimeMillis(), lastMsg.getType(), lastMsg.isBossKc());
-                for (int i = 0; i < existingCount; i++) {
-                    mergedMsg.incrementCount();
-                }
-                gameMessages.set(gameMessages.size() - 1, mergedMsg);
-                return;
-            }
-        }
-
-        String currentStripped = stripTags(cleanMessage);
-        int existingCount = 0;
-
-        if (config.collapseGameChat()) {
-            for (int i = gameMessages.size() - 1; i >= 0; i--) {
-                WidgetMessage existing = gameMessages.get(i);
-                if (stripTags(existing.getMessage()).equals(currentStripped)) {
-                    existingCount = existing.getCount();
-                    gameMessages.remove(i);
-                    break;
-                }
-            }
-        }
-
-        WidgetMessage newMsg = WidgetMessage.gameMessage(
-                cleanMessage, System.currentTimeMillis(), event.getType(), isBossKc);
-        for (int i = 0; i < existingCount; i++) {
-            newMsg.incrementCount();
-        }
-        gameMessages.add(newMsg);
-
-        while (gameMessages.size() > 50) {
-            gameMessages.remove(0);
-        }
-    }
-
-    private String tryMergeMessages(String previousMessage, String newMessage) {
-        for (MessageMergeRule rule : MESSAGE_MERGE_RULES) {
-            if (rule.matches(previousMessage, newMessage)) {
-                return rule.merge(previousMessage, newMessage);
-            }
-        }
-        return null;
-    }
-
-    private String stripTags(String text) {
-        if (text == null) {
-            return "";
-        }
-        return text.replaceAll("<[^>]*>", "");
-    }
-
-    private void handlePrivateMessage(ChatMessage event) {
-        boolean isOutgoing = event.getType() == ChatMessageType.PRIVATECHATOUT;
-
-        String sender = event.getName();
-        if (sender != null) {
-            sender = sender.replace('\u00A0', ' ').trim();
-        } else {
-            sender = "Unknown";
-        }
-
-        String message = event.getMessage();
-        if (message == null || message.trim().isEmpty()) {
-            return;
-        }
-
-        privateMessages.add(WidgetMessage.privateMessage(
-                sender, message.trim(), System.currentTimeMillis(), isOutgoing));
-
-        while (privateMessages.size() > 50) {
-            privateMessages.remove(0);
-        }
-    }
-
-    private void handleLoginLogoutNotification(ChatMessage event) {
-        String sender = event.getName();
-        if (sender != null) {
-            sender = sender.replace('\u00A0', ' ').trim();
-        } else {
-            sender = "System";
-        }
-
-        String message = event.getMessage();
-        if (message == null || message.trim().isEmpty()) {
-            return;
-        }
-
-        int maxFade = Math.min(5, config.privateFadeOutDuration());
-        if (maxFade <= 0) {
-            maxFade = 5;
-        }
-
-        privateMessages.add(WidgetMessage.loginNotification(
-                sender, message.trim(), System.currentTimeMillis(), maxFade));
-
-        while (privateMessages.size() > config.privateMaxMessages() * 2) {
-            privateMessages.remove(0);
-        }
-    }
-
-    public boolean shouldShowGameOverlay() {
-        if (!config.enableGameMessages()) {
-            return false;
-        }
-        if (client.getGameState() != GameState.LOGGED_IN) {
-            return false;
-        }
-        return isChatboxHidden();
-    }
-
-
-    public boolean isChatboxHidden() {
-        return isChatboxMinimized() || isChatboxWidgetHidden();
-    }
-
-    /**
-     * Checks if the user manually minimized their chatbox by clicking on the active tab underneath the chatbox.<br>
-     * Use {@link ChatWidgetPlugin#isChatboxHidden()}.
-     */
-    private boolean isChatboxMinimized() {
-        return client.getVarcIntValue(VarClientID.CHAT_VIEW) == 1337;
-    }
-
-    /**
-     * Checks if the chatbox widget itself is hidden from the game interface.
-     * Use {@link ChatWidgetPlugin#isChatboxHidden()}.
-     */
-    private boolean isChatboxWidgetHidden() {
-        Widget chatboxWidget = client.getWidget(InterfaceID.Chatbox.CHATAREA);
-        return (chatboxWidget != null && chatboxWidget.isHidden());
-    }
-
-    public boolean shouldShowPrivateOverlay() {
-        return config.enablePrivateMessages();
-    }
-
-    public boolean isWidgetsMerged() {
-        return ((client.isResized() && isChatboxMinimized()) || !client.isResized() && isChatboxWidgetHidden())
-                && config.mergeWithGameWidget()
-                && config.enableGameMessages()
-                && config.enablePrivateMessages()
-                && config.gamePosition() == WidgetPosition.DEFAULT;
-    }
-
-    public boolean isGameFilterEnabled() {
-        return client.getVarbitValue(VarbitID.GAME_FILTER) == 1;
-    }
-
-    public boolean isBossKcFilterEnabled() {
-        return client.getVarbitValue(VarbitID.BOSS_KILLCOUNT_FILTERED) == 1;
-    }
-
-    public List<WidgetMessage> getGameMessages() {
-        int size = gameMessages.size();
-        if (size == 0) {
-            return new ArrayList<>(0);
-        }
-
-        long currentTime = System.currentTimeMillis();
-        int fadeOutDuration = config.gameFadeOutDuration();
-        long fadeOutThreshold = fadeOutDuration > 0 ? (fadeOutDuration * 2000L) + 2000 : 0;
-        boolean gameFilterEnabled = isGameFilterEnabled();
-        boolean bossKcFilterEnabled = isBossKcFilterEnabled();
-
-        int maxMessages = config.gameMaxMessages();
-        List<WidgetMessage> filtered = new ArrayList<>(maxMessages);
-        for (int i = size - 1; i >= 0 && filtered.size() < maxMessages; i--) {
-            WidgetMessage msg = gameMessages.get(i);
-
-            if (fadeOutThreshold > 0 && currentTime - msg.getTimestamp() >= fadeOutThreshold) {
-                continue;
-            }
-
-            if (gameFilterEnabled && msg.getType() == ChatMessageType.SPAM) {
-                continue;
-            }
-
-            if (bossKcFilterEnabled && msg.isBossKc()) {
-                continue;
-            }
-
-            filtered.add(0, msg);
-        }
-
-        return filtered;
-    }
-
-    public List<WidgetMessage> getPrivateMessages() {
-        int size = privateMessages.size();
-        if (size == 0) {
-            return new ArrayList<>(0);
-        }
-
-        long currentTime = System.currentTimeMillis();
-        int fadeOutDuration = config.privateFadeOutDuration();
-        long defaultFadeOutThreshold = fadeOutDuration > 0 ? (fadeOutDuration * 2000L) + 2000 : 0;
-
-        int maxMessages = config.privateMaxMessages();
-        List<WidgetMessage> filtered = new ArrayList<>(maxMessages);
-        int pmCount = 0;
-        for (int i = size - 1; i >= 0; i--) {
-            WidgetMessage msg = privateMessages.get(i);
-
-            int msgMaxFade = msg.getMaxFadeSeconds();
-            long fadeOutThreshold;
-            if (msgMaxFade > 0) {
-                fadeOutThreshold = (msgMaxFade * 1000L) + 2000;
-            } else {
-                fadeOutThreshold = defaultFadeOutThreshold;
-            }
-
-            if (fadeOutThreshold > 0 && currentTime - msg.getTimestamp() >= fadeOutThreshold) {
-                continue;
-            }
-
-            boolean isLoginNotification = msg.getType() == ChatMessageType.LOGINLOGOUTNOTIFICATION;
-            if (!isLoginNotification && pmCount >= maxMessages) {
-                continue;
-            }
-
-            filtered.add(0, msg);
-            if (!isLoginNotification) {
-                pmCount++;
-            }
-        }
-
-        return filtered;
-    }
-
-    public void clearGameMessages() {
-        gameMessages.clear();
-    }
-
-    public void clearPrivateMessages() {
-        privateMessages.clear();
-    }
-
-    private void hidePmWidgets() {
-        //hide all regardless idk if this will hide something unintentionally?
-        hideGameframePmContainer(InterfaceID.TOPLEVEL, 36);
-        hideGameframePmContainer(InterfaceID.TOPLEVEL_OSRS_STRETCH, 93);
-        hideGameframePmContainer(InterfaceID.TOPLEVEL_PRE_EOC, 90);
+    private void setPmWidgetsHidden(boolean hidden) {
+        setGameframePmContainerHidden(InterfaceID.TOPLEVEL, 36, hidden);
+        setGameframePmContainerHidden(InterfaceID.TOPLEVEL_OSRS_STRETCH, 93, hidden);
+        setGameframePmContainerHidden(InterfaceID.TOPLEVEL_PRE_EOC, 90, hidden);
 
         Widget pmContainer = client.getWidget(InterfaceID.PM_CHAT, 0);
         if (pmContainer != null) {
-            pmContainer.setHidden(true);
+            pmContainer.setHidden(hidden);
             Widget[] dynamicChildren = pmContainer.getDynamicChildren();
             if (dynamicChildren != null) {
                 for (Widget child : dynamicChildren) {
                     if (child != null) {
-                        child.setHidden(true);
+                        child.setHidden(hidden);
                     }
                 }
             }
         }
     }
 
-    private void showPmWidgets() {
-        showGameframePmContainer(InterfaceID.TOPLEVEL, 36);
-        showGameframePmContainer(InterfaceID.TOPLEVEL_OSRS_STRETCH, 93);
-        showGameframePmContainer(InterfaceID.TOPLEVEL_PRE_EOC, 90);
-
-        Widget pmContainer = client.getWidget(InterfaceID.PM_CHAT, 0);
-        if (pmContainer != null) {
-            pmContainer.setHidden(false);
-            Widget[] dynamicChildren = pmContainer.getDynamicChildren();
-            if (dynamicChildren != null) {
-                for (Widget child : dynamicChildren) {
-                    if (child != null) {
-                        child.setHidden(false);
-                    }
-                }
-            }
-        }
-    }
-
-    private void hideGameframePmContainer(int group, int child) {
+    private void setGameframePmContainerHidden(int group, int child, boolean hidden) {
         Widget container = client.getWidget(group, child);
         if (container != null) {
-            container.setHidden(true);
-        }
-    }
-
-    private void showGameframePmContainer(int group, int child) {
-        Widget container = client.getWidget(group, child);
-        if (container != null) {
-            container.setHidden(false);
+            container.setHidden(hidden);
         }
     }
 
@@ -582,17 +560,6 @@ public class ChatWidgetPlugin extends Plugin {
         return configManager.getConfig(ChatWidgetConfig.class);
     }
 
-    /**
-     * Validates whether any of the chat control widgets which display game messages is being
-     * hovered. Currently, this yields true for the following widgets:
-     * <ul>
-     *     <li>CHAT_ALL</li>
-     *     <li>CHAT_GAME</li>
-     *     <li>CHAT_PUBLIC</li>
-     * </ul>
-     *
-     * @return <i>true</i> if any of the aforementioned widgets are being hovered otherwise returns <i>false</i>.
-     */
     boolean isHoveringGameChatControls() {
         final Point mouse = client.getMouseCanvasPosition();
         return isHoveringWidget(mouse, client.getWidget(InterfaceID.Chatbox.CHAT_ALL)) ||
@@ -600,25 +567,10 @@ public class ChatWidgetPlugin extends Plugin {
                 isHoveringWidget(mouse, client.getWidget(InterfaceID.Chatbox.CHAT_PUBLIC));
     }
 
-    /**
-     * Helper function to determine if the target {@link Widget} passed in is being hovered.
-     *
-     * @param mouse  The current coordinates of the mouse within the game canvas.
-     * @param target The widget
-     * @return <i>true</i> if the mouse coordinates falls within the targeted widget boundary otherwise returns
-     * <i>false</i>.
-     */
     boolean isHoveringWidget(Point mouse, Widget target) {
         if (target == null || target.isHidden()) {
             return false;
         }
-
-        final Point origin = target.getCanvasLocation();
-        final int mouseX = mouse.getX();
-        final int mouseY = mouse.getY();
-        return mouseX >= origin.getX()
-                && mouseX <= (origin.getX() + target.getWidth())
-                && mouseY >= origin.getY()
-                && mouseY <= (origin.getY() + target.getHeight());
+        return target.getBounds().contains(mouse.getX(), mouse.getY());
     }
 }

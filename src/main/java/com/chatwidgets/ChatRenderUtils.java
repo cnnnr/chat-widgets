@@ -2,6 +2,7 @@ package com.chatwidgets;
 
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.IndexedSprite;
+import net.runelite.client.config.ChatColorConfig;
 import net.runelite.client.ui.FontManager;
 
 import java.awt.Color;
@@ -13,12 +14,41 @@ import java.awt.image.BufferedImage;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class ChatRenderUtils {
+
+    private static final Pattern IMG_TAG_PATTERN = Pattern.compile("<img=(\\d+)>");
+    private static final Pattern COL_TAG_PATTERN = Pattern.compile("<col=([0-9a-fA-F]{6})>");
+    private static final Pattern COL_NAMED_PATTERN = Pattern.compile("<col(NORMAL|HIGHLIGHT)>");
+    private static final Pattern COL_UNKNOWN_PATTERN = Pattern.compile("<col[^>]*>");
+    private static final Pattern COL_END_PATTERN = Pattern.compile("</col>");
+    private static final Pattern BR_TAG_PATTERN = Pattern.compile("<br>");
+    private static final int MAX_MESSAGE_LENGTH = 500;
+
+    private static final Set<ChatMessageType> SENDER_PREFIX_TYPES = EnumSet.of(
+            ChatMessageType.PRIVATECHAT,
+            ChatMessageType.PRIVATECHATOUT,
+            ChatMessageType.MODPRIVATECHAT,
+            ChatMessageType.PUBLICCHAT,
+            ChatMessageType.MODCHAT,
+            ChatMessageType.AUTOTYPER,
+            ChatMessageType.MODAUTOTYPER,
+            ChatMessageType.FRIENDSCHAT,
+            ChatMessageType.CLAN_CHAT,
+            ChatMessageType.CLAN_GUEST_CHAT,
+            ChatMessageType.CLAN_GIM_CHAT
+    );
+
+    private static final Set<ChatMessageType> PM_TYPES = EnumSet.of(
+            ChatMessageType.PRIVATECHAT,
+            ChatMessageType.PRIVATECHATOUT,
+            ChatMessageType.MODPRIVATECHAT
+    );
 
     private ChatRenderUtils() {
     }
@@ -89,6 +119,36 @@ public final class ChatRenderUtils {
         return new Color(color.getRed(), color.getGreen(), color.getBlue(), Math.max(0, Math.min(255, alpha)));
     }
 
+    public static BufferedImage indexedSpriteToImage(IndexedSprite sprite) {
+        if (sprite == null) {
+            return null;
+        }
+        try {
+            int width = sprite.getWidth();
+            int height = sprite.getHeight();
+            if (width <= 0 || height <= 0) {
+                return null;
+            }
+            byte[] pixels = sprite.getPixels();
+            int[] palette = sprite.getPalette();
+            if (pixels == null || palette == null || pixels.length < width * height) {
+                return null;
+            }
+            BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int index = pixels[y * width + x] & 0xFF;
+                    if (index != 0 && index < palette.length) {
+                        img.setRGB(x, y, palette[index] | 0xFF000000);
+                    }
+                }
+            }
+            return img;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public static String formatTimestamp(long timestamp, String format) {
         try {
             return new SimpleDateFormat(format).format(new Date(timestamp));
@@ -97,14 +157,43 @@ public final class ChatRenderUtils {
         }
     }
 
-    public static List<RenderLine> buildPrivateMessageLines(WidgetMessage msg, FontMetrics metrics,
+    public static Color getMessageTypeColor(ChatMessageType type, Color defaultColor) {
+        switch (type) {
+            case DIDYOUKNOW:
+                return new Color(125, 255, 100);
+            case BROADCAST:
+                return new Color(255, 255, 0);
+            case TRADEREQ:
+                return new Color(126, 0, 128);
+            default:
+                return defaultColor;
+        }
+    }
+
+    /**
+     * Builds render lines for any message type. Handles sender prefixes for PMs,
+     * public chat, friends chat, and clan chat automatically based on the message type.
+     */
+    public static List<RenderLine> buildMessageLines(WidgetMessage msg, FontMetrics metrics,
             int widgetWidth, long currentTime, long fadeOutMs, boolean wrapText, Color textColor,
+            boolean retainContextualColours, boolean hideDuplicateCount,
             FontSize fontSize, IndexedSprite[] modIcons, boolean showTimestamp, String timestampFormat,
-            int maxMessageLength) {
+            Color timestampColour,
+            ChatColorConfig chatColorConfig) {
 
         List<RenderLine> lines = new ArrayList<>();
         int alpha = calculateAlpha(msg, currentTime, fadeOutMs);
 
+        ChatMessageType type = msg.getType();
+        boolean hasSenderPrefix = SENDER_PREFIX_TYPES.contains(type);
+        boolean isPm = PM_TYPES.contains(type);
+        boolean isLoginNotification = type == ChatMessageType.LOGINLOGOUTNOTIFICATION;
+
+        Color effectiveTextColor = retainContextualColours
+                ? getMessageTypeColor(type, textColor)
+                : textColor;
+
+        // Build header (timestamp + optional sender prefix)
         List<TextSegment> headerSegments = new ArrayList<>();
         int headerWidth = 0;
 
@@ -112,35 +201,49 @@ public final class ChatRenderUtils {
             String ts = formatTimestamp(msg.getTimestamp(), timestampFormat + " ");
             if (ts != null) {
                 int width = metrics.stringWidth(ts);
-                headerSegments.add(new TextSegment(ts, -1, width, textColor));
+                Color tsColor = timestampColour != null ? timestampColour : textColor;
+                headerSegments.add(new TextSegment(ts, -1, width, tsColor));
                 headerWidth += width;
             }
         }
 
-        boolean isLoginNotification = msg.getType() == ChatMessageType.LOGINLOGOUTNOTIFICATION;
-
-        if (!isLoginNotification) {
-            String prefix = msg.isOutgoing() ? "To " : "From ";
-            headerSegments.add(new TextSegment(prefix, -1, metrics.stringWidth(prefix), textColor));
-            headerWidth += metrics.stringWidth(prefix);
+        if (hasSenderPrefix && !isLoginNotification && msg.getSender() != null) {
+            Color nameColor = retainContextualColours ? Color.WHITE : textColor;
+            if (isPm) {
+                String prefix = msg.isOutgoing() ? "To " : "From ";
+                headerSegments.add(new TextSegment(prefix, -1, metrics.stringWidth(prefix), textColor));
+                headerWidth += metrics.stringWidth(prefix);
+            }
 
             List<TextSegment> senderSegments = parseTextWithIcons(msg.getSender(), metrics, modIcons,
-                    textColor, fontSize);
+                    nameColor, fontSize);
             for (TextSegment seg : senderSegments) {
                 headerSegments.add(seg);
                 headerWidth += seg.width;
             }
 
-            headerSegments.add(new TextSegment(": ", -1, metrics.stringWidth(": "), textColor));
+            headerSegments.add(new TextSegment(": ", -1, metrics.stringWidth(": "), nameColor));
             headerWidth += metrics.stringWidth(": ");
         }
 
+        // Build message body
         String messageText = msg.getMessage();
-        if (messageText != null && messageText.length() > maxMessageLength) {
-            messageText = messageText.substring(0, maxMessageLength) + "...";
+        if (messageText != null && messageText.length() > MAX_MESSAGE_LENGTH) {
+            messageText = messageText.substring(0, MAX_MESSAGE_LENGTH) + "...";
         }
 
-        List<TextSegment> messageSegments = parseTextWithIcons(messageText, metrics, modIcons, textColor, fontSize);
+        if (msg.getCount() > 1 && !hideDuplicateCount) {
+            messageText = messageText + " (" + msg.getCount() + ")";
+        }
+
+        // Use full color/icon parsing for system messages, simple icon parsing for sender messages
+        List<TextSegment> messageSegments;
+        if (hasSenderPrefix) {
+            messageSegments = parseTextWithIcons(messageText, metrics, modIcons, textColor, fontSize);
+        } else {
+            messageSegments = parseTextWithColoursAndIcons(messageText, metrics, modIcons,
+                    retainContextualColours, effectiveTextColor, fontSize, chatColorConfig);
+        }
 
         if (!wrapText) {
             List<TextSegment> singleLine = new ArrayList<>(headerSegments);
@@ -148,9 +251,8 @@ public final class ChatRenderUtils {
             lines.add(new RenderLine(singleLine, alpha));
         } else {
             int firstLineRemaining = widgetWidth - headerWidth;
-            List<List<TextSegment>> wrappedLines = wrapSegments(messageSegments, metrics, firstLineRemaining,
-                    widgetWidth, textColor);
-
+            List<List<TextSegment>> wrappedLines = wrapSegments(messageSegments, metrics,
+                    firstLineRemaining, widgetWidth, textColor);
             addWrappedLines(lines, alpha, headerSegments, wrappedLines);
         }
 
@@ -172,61 +274,6 @@ public final class ChatRenderUtils {
         }
     }
 
-    public static BufferedImage getCachedSprite(IndexedSprite[] modIcons, int iconId,
-            Map<Integer, BufferedImage> spriteCache) {
-        if (modIcons == null || iconId < 0 || iconId >= modIcons.length) {
-            return null;
-        }
-
-        IndexedSprite sprite = modIcons[iconId];
-        if (sprite == null) {
-            return null;
-        }
-
-        BufferedImage cached = spriteCache.get(iconId);
-        if (cached != null && cached.getWidth() == sprite.getWidth() && cached.getHeight() == sprite.getHeight()) {
-            return cached;
-        }
-
-        BufferedImage img = spriteToBufferedImage(sprite);
-        if (img != null) {
-            spriteCache.put(iconId, img);
-        }
-        return img;
-    }
-
-    public static BufferedImage spriteToBufferedImage(IndexedSprite sprite) {
-        if (sprite == null) {
-            return null;
-        }
-
-        int width = sprite.getWidth();
-        int height = sprite.getHeight();
-        byte[] pixels = sprite.getPixels();
-        int[] palette = sprite.getPalette();
-
-        if (width <= 0 || height <= 0 || pixels == null || palette == null) {
-            return null;
-        }
-
-        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        for (int py = 0; py < height; py++) {
-            for (int px = 0; px < width; px++) {
-                int idx = py * width + px;
-                if (idx >= pixels.length) {
-                    continue;
-                }
-                int paletteIdx = pixels[idx] & 0xFF;
-                if (paletteIdx == 0) {
-                    img.setRGB(px, py, 0x00000000);
-                } else if (paletteIdx < palette.length) {
-                    img.setRGB(px, py, 0xFF000000 | palette[paletteIdx]);
-                }
-            }
-        }
-        return img;
-    }
-
     public static int calculateIconWidth(IndexedSprite[] modIcons, int iconId, FontSize fontSize) {
         int iconWidth = 13;
         if (modIcons != null && iconId >= 0 && iconId < modIcons.length && modIcons[iconId] != null) {
@@ -245,8 +292,7 @@ public final class ChatRenderUtils {
             return segments;
         }
 
-        Pattern imgTagPattern = Pattern.compile("<img=(\\d+)>");
-        Matcher matcher = imgTagPattern.matcher(text);
+        Matcher matcher = IMG_TAG_PATTERN.matcher(text);
         int lastEnd = 0;
 
         while (matcher.find()) {
@@ -269,6 +315,108 @@ public final class ChatRenderUtils {
         if (lastEnd < text.length()) {
             String after = text.substring(lastEnd);
             segments.add(new TextSegment(after, -1, metrics.stringWidth(after), textColor));
+        }
+
+        return segments;
+    }
+
+    /**
+     * Parses text with full color tag support, icon tags, and line breaks.
+     * Used for system/game messages that can contain color formatting.
+     */
+    public static List<TextSegment> parseTextWithColoursAndIcons(String text, FontMetrics metrics,
+            IndexedSprite[] modIcons, boolean retainContextualColours, Color textColor,
+            FontSize fontSize, ChatColorConfig chatColorConfig) {
+        List<TextSegment> segments = new ArrayList<>();
+        if (text == null || text.isEmpty()) {
+            return segments;
+        }
+
+        Color currentColor = textColor;
+        StringBuilder currentText = new StringBuilder();
+        int i = 0;
+
+        while (i < text.length()) {
+            Matcher imgMatcher = IMG_TAG_PATTERN.matcher(text.substring(i));
+            Matcher colMatcher = COL_TAG_PATTERN.matcher(text.substring(i));
+            Matcher colNamedMatcher = COL_NAMED_PATTERN.matcher(text.substring(i));
+            Matcher colEndMatcher = COL_END_PATTERN.matcher(text.substring(i));
+            Matcher brMatcher = BR_TAG_PATTERN.matcher(text.substring(i));
+
+            if (brMatcher.lookingAt()) {
+                if (currentText.length() > 0) {
+                    String str = currentText.toString();
+                    segments.add(new TextSegment(str, -1, metrics.stringWidth(str), currentColor));
+                    currentText = new StringBuilder();
+                }
+                segments.add(new TextSegment("", TextSegment.LINE_BREAK, 0, currentColor));
+                i += brMatcher.end();
+            } else if (imgMatcher.lookingAt()) {
+                if (currentText.length() > 0) {
+                    String str = currentText.toString();
+                    segments.add(new TextSegment(str, -1, metrics.stringWidth(str), currentColor));
+                    currentText = new StringBuilder();
+                }
+                try {
+                    int iconId = Integer.parseInt(imgMatcher.group(1));
+                    int iconWidth = calculateIconWidth(modIcons, iconId, fontSize);
+                    segments.add(new TextSegment("", iconId, iconWidth, currentColor));
+                } catch (NumberFormatException e) {
+                    currentText.append(imgMatcher.group(0));
+                }
+                i += imgMatcher.end();
+            } else if (colNamedMatcher.lookingAt()) {
+                if (currentText.length() > 0) {
+                    String str = currentText.toString();
+                    segments.add(new TextSegment(str, -1, metrics.stringWidth(str), currentColor));
+                    currentText = new StringBuilder();
+                }
+                String colorName = colNamedMatcher.group(1);
+                if ("NORMAL".equals(colorName)) {
+                    currentColor = textColor;
+                } else if ("HIGHLIGHT".equals(colorName) && chatColorConfig != null) {
+                    Color highlight = chatColorConfig.transparentExamineHighlight();
+                    currentColor = highlight != null ? highlight : textColor;
+                }
+                i += colNamedMatcher.end();
+            } else if (colMatcher.lookingAt() && retainContextualColours) {
+                if (currentText.length() > 0) {
+                    String str = currentText.toString();
+                    segments.add(new TextSegment(str, -1, metrics.stringWidth(str), currentColor));
+                    currentText = new StringBuilder();
+                }
+                try {
+                    currentColor = Color.decode("#" + colMatcher.group(1));
+                } catch (NumberFormatException e) {
+                    currentColor = textColor;
+                }
+                i += colMatcher.end();
+            } else if (colEndMatcher.lookingAt() && retainContextualColours) {
+                if (currentText.length() > 0) {
+                    String str = currentText.toString();
+                    segments.add(new TextSegment(str, -1, metrics.stringWidth(str), currentColor));
+                    currentText = new StringBuilder();
+                }
+                currentColor = textColor;
+                i += colEndMatcher.end();
+            } else if (colMatcher.lookingAt()) {
+                i += colMatcher.end();
+            } else if (colEndMatcher.lookingAt()) {
+                i += colEndMatcher.end();
+            } else {
+                Matcher colUnknownMatcher = COL_UNKNOWN_PATTERN.matcher(text.substring(i));
+                if (colUnknownMatcher.lookingAt()) {
+                    i += colUnknownMatcher.end();
+                } else {
+                    currentText.append(text.charAt(i));
+                    i++;
+                }
+            }
+        }
+
+        if (currentText.length() > 0) {
+            String str = currentText.toString();
+            segments.add(new TextSegment(str, -1, metrics.stringWidth(str), currentColor));
         }
 
         return segments;

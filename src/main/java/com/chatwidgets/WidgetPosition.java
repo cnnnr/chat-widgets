@@ -1,7 +1,7 @@
 package com.chatwidgets;
 
 public enum WidgetPosition {
-    DEFAULT("Default"),
+    WIDGET("Widget"),
     BELOW_PLAYER("Below Player"),
     ABOVE_PLAYER("Above Player");
 
