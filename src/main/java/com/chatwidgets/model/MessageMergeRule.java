@@ -1,7 +1,12 @@
-package com.chatwidgets;
+package com.chatwidgets.model;
 
 import java.util.regex.Pattern;
 
+/**
+ * Defines a rule for merging two consecutive game messages into one. For example, "You eat
+ * the shark." followed by "It heals some health." becomes a single combined message.
+ * Supports both exact string matching and regex patterns for the second message.
+ */
 public class MessageMergeRule {
     private final String previousPrefix;
     private final String nextPattern;

@@ -1,7 +1,12 @@
-package com.chatwidgets;
+package com.chatwidgets.overlay;
 
 import java.awt.Color;
 
+/**
+ * A single renderable piece of a message line — either a text string with a colour, an icon
+ * reference (identified by {@code iconId} into the client's modIcons array), or a line break
+ * sentinel ({@link #LINE_BREAK}).
+ */
 public class TextSegment {
     public static final int LINE_BREAK = -2;
 

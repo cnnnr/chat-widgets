@@ -1,11 +1,21 @@
-package com.chatwidgets;
+package com.chatwidgets.overlay;
 
+import com.chatwidgets.model.MessageCategory;
+import com.chatwidgets.model.WidgetPosition;
 import net.runelite.api.ChatMessageType;
 
 import java.util.EnumSet;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Per-overlay configuration POJO. Each instance defines a single chat widget's behaviour:
+ * which message types it shows, its position mode, fade duration, max visible messages, etc.
+ *
+ * <p>Serialized to/from JSON via Gson and stored as a single config key in RuneLite's
+ * {@link net.runelite.client.config.ConfigManager}. On first run, two defaults are created
+ * via {@link #defaultAllWidget()} and {@link #defaultPrivateWidget()}.
+ */
 public class OverlayConfig {
     private String id;
     private String name;
@@ -18,6 +28,8 @@ public class OverlayConfig {
     private boolean dynamicHeight;
     private boolean hideDuplicateCount;
     private boolean contextualColours;
+    private boolean show;
+    private boolean alwaysVisible;
     private WidgetPosition position;
 
     public OverlayConfig() {
@@ -29,54 +41,38 @@ public class OverlayConfig {
         this.widgetWidth = 512;
         this.marginTop = 0;
         this.marginBottom = 0;
-        this.dynamicHeight = false;
+        this.dynamicHeight = true;
         this.hideDuplicateCount = false;
         this.contextualColours = true;
+        this.show = true;
+        this.alwaysVisible = false;
         this.position = WidgetPosition.WIDGET;
     }
 
-    public static OverlayConfig createDefault(String name, Set<ChatMessageType> types) {
+    public static OverlayConfig createDefault(String name, Set<ChatMessageType> types, boolean alwaysVisible) {
         OverlayConfig config = new OverlayConfig();
         config.name = name;
         config.messageTypes = EnumSet.copyOf(types);
+        config.alwaysVisible = alwaysVisible;
         return config;
     }
 
-    public static OverlayConfig defaultGameOverlay() {
-        return createDefault("Game Messages",
-                EnumSet.of(
-                        ChatMessageType.GAMEMESSAGE,
-                        ChatMessageType.SPAM,
-                        ChatMessageType.CONSOLE,
-                        ChatMessageType.WELCOME,
-                        ChatMessageType.BROADCAST,
-                        ChatMessageType.DIDYOUKNOW,
-                        ChatMessageType.ENGINE,
-                        ChatMessageType.FRIENDNOTIFICATION,
-                        ChatMessageType.FRIENDSCHATNOTIFICATION,
-                        ChatMessageType.IGNORENOTIFICATION,
-                        ChatMessageType.ITEM_EXAMINE,
-                        ChatMessageType.NPC_EXAMINE,
-                        ChatMessageType.OBJECT_EXAMINE,
-                        ChatMessageType.PLAYERRELATED,
-                        ChatMessageType.SNAPSHOTFEEDBACK,
-                        ChatMessageType.TRADE,
-                        ChatMessageType.TRADE_SENT,
-                        ChatMessageType.TRADEREQ,
-                        ChatMessageType.UNKNOWN
-                )
-        );
+    public static OverlayConfig defaultAllWidget() {
+        EnumSet<ChatMessageType> types = EnumSet.noneOf(ChatMessageType.class);
+        for (MessageCategory category : MessageCategory.values()) {
+            if (category != MessageCategory.PRIVATE) {
+                types.addAll(category.getTypes());
+            }
+        }
+        return createDefault("All Messages", types, false);
     }
 
-    public static OverlayConfig defaultPrivateOverlay() {
-        return createDefault("Private Messages",
-                EnumSet.of(
-                        ChatMessageType.PRIVATECHAT,
-                        ChatMessageType.PRIVATECHATOUT,
-                        ChatMessageType.MODPRIVATECHAT,
-                        ChatMessageType.LOGINLOGOUTNOTIFICATION
-                )
-        );
+    public static OverlayConfig defaultPrivateWidget() {
+        EnumSet<ChatMessageType> types = EnumSet.noneOf(ChatMessageType.class);
+        types.addAll(MessageCategory.PRIVATE.getTypes());
+        OverlayConfig config = createDefault("Private Messages", types, true);
+        config.contextualColours = false;
+        return config;
     }
 
     // Getters and setters
@@ -167,6 +163,22 @@ public class OverlayConfig {
 
     public void setContextualColours(boolean contextualColours) {
         this.contextualColours = contextualColours;
+    }
+
+    public boolean isShow() {
+        return show;
+    }
+
+    public void setShow(boolean show) {
+        this.show = show;
+    }
+
+    public boolean isAlwaysVisible() {
+        return alwaysVisible;
+    }
+
+    public void setAlwaysVisible(boolean alwaysVisible) {
+        this.alwaysVisible = alwaysVisible;
     }
 
     public WidgetPosition getPosition() {

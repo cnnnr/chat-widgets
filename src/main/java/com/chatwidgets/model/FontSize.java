@@ -1,4 +1,4 @@
-package com.chatwidgets;
+package com.chatwidgets.model;
 
 public enum FontSize {
     REGULAR("Regular"),

@@ -1,43 +1,48 @@
-package com.chatwidgets;
+package com.chatwidgets.model;
 
 import net.runelite.api.ChatMessageType;
 
+/**
+ * Immutable representation of a chat message in the shared pool. Created via factory methods
+ * that correspond to the three message shapes: system/game messages, sender-prefixed messages
+ * (public, private, clan, friends chat), and login/logout notifications.
+ *
+ * <p>The only mutable field is {@code count}, used by the duplicate collapse feature to
+ * track how many consecutive identical messages this entry represents.
+ */
 public class WidgetMessage {
     private final String message;
     private final long timestamp;
     private final ChatMessageType type;
     private final boolean bossKc;
     private final String sender;
+    private final String channelName;
     private final boolean outgoing;
     private final int maxFadeSeconds;
     private int count = 1;
 
-    public static WidgetMessage create(String message, long timestamp, ChatMessageType type,
-            String sender, boolean outgoing, boolean bossKc, int maxFadeSeconds) {
-        return new WidgetMessage(message, timestamp, type, bossKc, sender, outgoing, maxFadeSeconds);
-    }
-
     public static WidgetMessage gameMessage(String message, long timestamp, ChatMessageType type, boolean bossKc) {
-        return new WidgetMessage(message, timestamp, type, bossKc, null, false, 0);
+        return new WidgetMessage(message, timestamp, type, bossKc, null, null, false, 0);
     }
 
-    public static WidgetMessage senderMessage(String sender, String message, long timestamp,
+    public static WidgetMessage senderMessage(String sender, String channelName, String message, long timestamp,
             ChatMessageType type, boolean outgoing) {
-        return new WidgetMessage(message, timestamp, type, false, sender, outgoing, 0);
+        return new WidgetMessage(message, timestamp, type, false, sender, channelName, outgoing, 0);
     }
 
     public static WidgetMessage loginNotification(String sender, String message, long timestamp, int maxFadeSeconds) {
         return new WidgetMessage(message, timestamp, ChatMessageType.LOGINLOGOUTNOTIFICATION,
-                false, sender, false, maxFadeSeconds);
+                false, sender, null, false, maxFadeSeconds);
     }
 
     private WidgetMessage(String message, long timestamp, ChatMessageType type, boolean bossKc,
-            String sender, boolean outgoing, int maxFadeSeconds) {
+            String sender, String channelName, boolean outgoing, int maxFadeSeconds) {
         this.message = message;
         this.timestamp = timestamp;
         this.type = type;
         this.bossKc = bossKc;
         this.sender = sender;
+        this.channelName = channelName;
         this.outgoing = outgoing;
         this.maxFadeSeconds = maxFadeSeconds;
     }
@@ -60,6 +65,10 @@ public class WidgetMessage {
 
     public String getSender() {
         return sender;
+    }
+
+    public String getChannelName() {
+        return channelName;
     }
 
     public boolean isOutgoing() {

@@ -1,6 +1,14 @@
-package com.chatwidgets;
+package com.chatwidgets.overlay;
 
+import com.chatwidgets.ChatWidgetConfig;
+import com.chatwidgets.ChatWidgetPlugin;
+import com.chatwidgets.model.FontSize;
+import com.chatwidgets.model.MessageCategory;
+import com.chatwidgets.model.WidgetMessage;
+import com.chatwidgets.model.WidgetPosition;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.GameState;
 import net.runelite.api.IndexedSprite;
 import net.runelite.api.MenuAction;
 import net.runelite.api.Player;
@@ -20,6 +28,14 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * A single chat overlay instance. Each one is backed by an {@link OverlayConfig} that
+ * determines which message types it displays, its position mode, fade behaviour, and
+ * other per-widget settings.
+ *
+ * <p>On each frame, the overlay asks the plugin for the filtered message list, builds
+ * render lines via {@link ChatRenderUtils#buildMessageLines}, and paints them bottom-up.
+ */
 public class DynamicChatOverlay extends Overlay {
 
     private static final int MIN_ZOOM = -22;
@@ -44,7 +60,6 @@ public class DynamicChatOverlay extends Overlay {
         this.overlayConfig = overlayConfig;
         setPosition(client.isResized() ? OverlayPosition.ABOVE_CHATBOX_RIGHT : OverlayPosition.BOTTOM_LEFT);
         setLayer(OverlayLayer.UNDER_WIDGETS);
-        setPriority(10f);
         setResizable(true);
         setMovable(true);
         setMinimumSize(150);
@@ -119,7 +134,7 @@ public class DynamicChatOverlay extends Overlay {
                         retainContextualColours, hideDuplicateCount,
                         fontSize, client.getModIcons(),
                         globalConfig.showTimestamp(), globalConfig.timestampFormat(),
-                        globalConfig.timestampColour(),
+                        globalConfig.showChannelName(),
                         chatColorConfig);
 
                 for (RenderLine line : msgLines) {
@@ -180,9 +195,13 @@ public class DynamicChatOverlay extends Overlay {
             int x = followPlayer ? (widgetWidth - lineWidth) / 2 : 0;
 
             for (TextSegment segment : line.segments) {
-                if (segment.iconId >= 0 && modIcons != null && segment.iconId < modIcons.length) {
-                    BufferedImage img = ChatRenderUtils.indexedSpriteToImage(modIcons[segment.iconId]);
-                    x += ChatRenderUtils.drawIcon(graphics, img, fontSize, metrics, x, y);
+                if (segment.iconId >= 0) {
+                    BufferedImage img = ChatRenderUtils.getModIconImage(segment.iconId, modIcons);
+                    if (img != null) {
+                        x += ChatRenderUtils.drawIcon(graphics, img, fontSize, metrics, x, y);
+                    } else {
+                        x += segment.width;
+                    }
                 } else {
                     Color segmentColor = segment.color != null ? segment.color : Color.WHITE;
                     x += ChatRenderUtils.drawText(graphics, segment.text, segmentColor, line.alpha, x, y,
@@ -201,7 +220,16 @@ public class DynamicChatOverlay extends Overlay {
     }
 
     private boolean shouldRender() {
-        return client.getGameState() == net.runelite.api.GameState.LOGGED_IN;
+        if (!overlayConfig.isShow()) {
+            return false;
+        }
+        if (client.getGameState() != GameState.LOGGED_IN) {
+            return false;
+        }
+        if (overlayConfig.isAlwaysVisible()) {
+            return true;
+        }
+        return plugin.isChatboxHidden();
     }
 
     private int calculateZoomOffset(WidgetPosition positionMode) {
@@ -221,18 +249,33 @@ public class DynamicChatOverlay extends Overlay {
         return (int) (minOffset + normalizedZoom * (maxOffset - minOffset));
     }
 
-    private Color getCategoryColour(net.runelite.api.ChatMessageType type) {
+    private Color getCategoryColour(ChatMessageType type) {
+        if (type == ChatMessageType.DIDYOUKNOW) {
+            return globalConfig.didYouKnowColour();
+        }
+        if (type == ChatMessageType.BROADCAST) {
+            return globalConfig.broadcastColour();
+        }
+
         switch (MessageCategory.fromType(type)) {
             case GAME:
                 return globalConfig.gameColour();
             case TRADE:
                 return globalConfig.tradeColour();
+            case CHALLENGE:
+                return globalConfig.challengeColour();
             case PUBLIC_CHAT:
                 return globalConfig.publicColour();
+            case AUTO:
+                return globalConfig.autoColour();
             case FRIENDS_CHAT:
                 return globalConfig.friendsColour();
             case CLAN_CHAT:
                 return globalConfig.clanColour();
+            case GUEST_CLAN_CHAT:
+                return globalConfig.guestClanColour();
+            case GIM_CLAN_CHAT:
+                return globalConfig.gimClanColour();
             case PRIVATE:
                 return globalConfig.privateColour();
             default:

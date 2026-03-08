@@ -1,5 +1,8 @@
 package com.chatwidgets;
 
+import com.chatwidgets.model.MessageCategory;
+import com.chatwidgets.model.WidgetPosition;
+import com.chatwidgets.overlay.OverlayConfig;
 import net.runelite.api.ChatMessageType;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
@@ -16,6 +19,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * RuneLite sidebar panel for managing overlay widgets. Users can add, delete, reorder,
+ * and configure overlays here.
+ */
 public class ChatWidgetPanel extends PluginPanel {
 
     private final ChatWidgetPlugin plugin;
@@ -84,7 +91,7 @@ public class ChatWidgetPanel extends PluginPanel {
                 new EmptyBorder(4, 4, 4, 4)
         ));
 
-        boolean collapsed = collapsedState.getOrDefault(oc.getId(), false);
+        boolean collapsed = collapsedState.getOrDefault(oc.getId(), true);
 
         // Collapsible header row
         JPanel headerRow = new JPanel(new BorderLayout());
@@ -97,7 +104,7 @@ public class ChatWidgetPanel extends PluginPanel {
         arrow.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 
         JLabel nameLabel = new JLabel(oc.getName());
-        nameLabel.setForeground(Color.WHITE);
+        nameLabel.setForeground(oc.isShow() ? Color.WHITE : new Color(255, 255, 255, 100));
         nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
 
         JPanel namePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
@@ -105,6 +112,35 @@ public class ChatWidgetPanel extends PluginPanel {
         namePanel.add(arrow);
         namePanel.add(nameLabel);
         headerRow.add(namePanel, BorderLayout.CENTER);
+
+        JPanel orderButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        orderButtons.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
+        JLabel upBtn = new JLabel("\u25B2");
+        upBtn.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+        upBtn.setBorder(new EmptyBorder(0, 3, 0, 3));
+        upBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        upBtn.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+                plugin.moveOverlay(oc, -1);
+            }
+        });
+
+        JLabel downBtn = new JLabel("\u25BC");
+        downBtn.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+        downBtn.setBorder(new EmptyBorder(0, 3, 0, 3));
+        downBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        downBtn.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+                plugin.moveOverlay(oc, 1);
+            }
+        });
+
+        orderButtons.add(upBtn);
+        orderButtons.add(downBtn);
+        headerRow.add(orderButtons, BorderLayout.EAST);
 
         // Content panel (everything below the header)
         JPanel content = new JPanel();
@@ -131,10 +167,21 @@ public class ChatWidgetPanel extends PluginPanel {
         // Title (editable name)
         content.add(buildTitleRow(oc, nameLabel));
 
+        // Show toggle
+        content.add(buildCheckbox("Show", oc.isShow(), v -> {
+            oc.setShow(v);
+            nameLabel.setForeground(v ? Color.WHITE : new Color(255, 255, 255, 100));
+            plugin.onOverlayConfigChanged();
+        }));
+
         // Message types - inline row like other settings
         content.add(buildMessageTypeRow(oc));
 
         // Settings rows
+        content.add(buildCheckbox("Always Visible", oc.isAlwaysVisible(), v -> {
+            oc.setAlwaysVisible(v);
+            plugin.onOverlayConfigChanged();
+        }));
         content.add(buildCheckbox("Contextual Colours", oc.isContextualColours(), v -> {
             oc.setContextualColours(v);
             plugin.onOverlayConfigChanged();
@@ -172,7 +219,7 @@ public class ChatWidgetPanel extends PluginPanel {
         deleteButton.setFocusPainted(false);
         deleteButton.addActionListener(e -> {
             int result = JOptionPane.showConfirmDialog(this,
-                    "Delete overlay \"" + oc.getName() + "\"?",
+                    "Delete chat widget \"" + oc.getName() + "\"?",
                     "Confirm", JOptionPane.YES_NO_OPTION);
             if (result == JOptionPane.YES_OPTION) {
                 plugin.removeOverlay(oc);
@@ -217,7 +264,7 @@ public class ChatWidgetPanel extends PluginPanel {
                     if (item.isSelected()) {
                         updated.addAll(category.getTypes());
                     } else {
-                        updated.removeAll(category.getTypes());
+                        category.getTypes().forEach(updated::remove);
                     }
 
                     oc.setMessageTypes(updated);

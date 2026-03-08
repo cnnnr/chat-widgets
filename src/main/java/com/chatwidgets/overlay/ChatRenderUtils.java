@@ -1,5 +1,7 @@
-package com.chatwidgets;
+package com.chatwidgets.overlay;
 
+import com.chatwidgets.model.FontSize;
+import com.chatwidgets.model.WidgetMessage;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.IndexedSprite;
 import net.runelite.client.config.ChatColorConfig;
@@ -11,15 +13,34 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferInt;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Stateless rendering utilities shared by all overlays. Handles two main concerns:
+ *
+ * <p><b>Text parsing</b> — Converts raw message strings containing OSRS markup into lists of
+ * {@link TextSegment}s. Two parsers exist:
+ * <ul>
+ *   <li>{@link #parseTextWithIcons} — handles {@code <img=N>} icon tags and entity references
+ *       ({@code <lt>}, {@code <gt>}). Used for sender names.</li>
+ *   <li>{@link #parseTextWithColoursAndIcons} — additionally handles {@code <col=RRGGBB>},
+ *       {@code </col>}, {@code <br>}, and named colour tags. Used for message bodies.</li>
+ * </ul>
+ *
+ * <p><b>Icon caching</b> — Converts RuneLite's {@link IndexedSprite} mod icons to
+ * {@link BufferedImage} on first access and caches them. The cache is invalidated when
+ * the modIcons array reference changes (e.g. after a plugin loads new icons).
+ */
 public final class ChatRenderUtils {
 
     private static final Pattern IMG_TAG_PATTERN = Pattern.compile("<img=(\\d+)>");
@@ -29,6 +50,9 @@ public final class ChatRenderUtils {
     private static final Pattern COL_END_PATTERN = Pattern.compile("</col>");
     private static final Pattern BR_TAG_PATTERN = Pattern.compile("<br>");
     private static final int MAX_MESSAGE_LENGTH = 500;
+
+    private static IndexedSprite[] cachedModIconsRef;
+    private static final Map<Integer, BufferedImage> iconImageCache = new HashMap<>();
 
     private static final Set<ChatMessageType> SENDER_PREFIX_TYPES = EnumSet.of(
             ChatMessageType.PRIVATECHAT,
@@ -84,10 +108,6 @@ public final class ChatRenderUtils {
             iconY += 2;
         }
 
-        if (iconY < 0) {
-            return iconWidth + 2;
-        }
-
         graphics.drawImage(img, x + 1, iconY, iconWidth, iconHeight, null);
         return iconWidth + 2;
     }
@@ -119,6 +139,29 @@ public final class ChatRenderUtils {
         return new Color(color.getRed(), color.getGreen(), color.getBlue(), Math.max(0, Math.min(255, alpha)));
     }
 
+    /**
+     * Returns a cached BufferedImage for the given mod icon index.
+     * Converts and caches on first access; clears cache when the modIcons array reference changes.
+     */
+    public static BufferedImage getModIconImage(int iconId, IndexedSprite[] modIcons) {
+        if (modIcons == null || iconId < 0 || iconId >= modIcons.length) {
+            return null;
+        }
+
+        if (modIcons != cachedModIconsRef) {
+            iconImageCache.clear();
+            cachedModIconsRef = modIcons;
+        }
+
+        if (iconImageCache.containsKey(iconId)) {
+            return iconImageCache.get(iconId);
+        }
+
+        BufferedImage img = indexedSpriteToImage(modIcons[iconId]);
+        iconImageCache.put(iconId, img);
+        return img;
+    }
+
     public static BufferedImage indexedSpriteToImage(IndexedSprite sprite) {
         if (sprite == null) {
             return null;
@@ -131,16 +174,16 @@ public final class ChatRenderUtils {
             }
             byte[] pixels = sprite.getPixels();
             int[] palette = sprite.getPalette();
-            if (pixels == null || palette == null || pixels.length < width * height) {
+            if (pixels == null || palette == null || palette.length == 0) {
                 return null;
             }
+            int totalPixels = Math.min(pixels.length, width * height);
             BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    int index = pixels[y * width + x] & 0xFF;
-                    if (index != 0 && index < palette.length) {
-                        img.setRGB(x, y, palette[index] | 0xFF000000);
-                    }
+            int[] imgPixels = ((DataBufferInt) img.getRaster().getDataBuffer()).getData();
+            for (int i = 0; i < totalPixels; i++) {
+                int index = pixels[i] & 0xFF;
+                if (index != 0 && index < palette.length) {
+                    imgPixels[i] = palette[index] | 0xFF000000;
                 }
             }
             return img;
@@ -157,19 +200,6 @@ public final class ChatRenderUtils {
         }
     }
 
-    public static Color getMessageTypeColor(ChatMessageType type, Color defaultColor) {
-        switch (type) {
-            case DIDYOUKNOW:
-                return new Color(125, 255, 100);
-            case BROADCAST:
-                return new Color(255, 255, 0);
-            case TRADEREQ:
-                return new Color(126, 0, 128);
-            default:
-                return defaultColor;
-        }
-    }
-
     /**
      * Builds render lines for any message type. Handles sender prefixes for PMs,
      * public chat, friends chat, and clan chat automatically based on the message type.
@@ -178,8 +208,7 @@ public final class ChatRenderUtils {
             int widgetWidth, long currentTime, long fadeOutMs, boolean wrapText, Color textColor,
             boolean retainContextualColours, boolean hideDuplicateCount,
             FontSize fontSize, IndexedSprite[] modIcons, boolean showTimestamp, String timestampFormat,
-            Color timestampColour,
-            ChatColorConfig chatColorConfig) {
+            boolean showChannelName, ChatColorConfig chatColorConfig) {
 
         List<RenderLine> lines = new ArrayList<>();
         int alpha = calculateAlpha(msg, currentTime, fadeOutMs);
@@ -189,10 +218,6 @@ public final class ChatRenderUtils {
         boolean isPm = PM_TYPES.contains(type);
         boolean isLoginNotification = type == ChatMessageType.LOGINLOGOUTNOTIFICATION;
 
-        Color effectiveTextColor = retainContextualColours
-                ? getMessageTypeColor(type, textColor)
-                : textColor;
-
         // Build header (timestamp + optional sender prefix)
         List<TextSegment> headerSegments = new ArrayList<>();
         int headerWidth = 0;
@@ -201,7 +226,7 @@ public final class ChatRenderUtils {
             String ts = formatTimestamp(msg.getTimestamp(), timestampFormat + " ");
             if (ts != null) {
                 int width = metrics.stringWidth(ts);
-                Color tsColor = timestampColour != null ? timestampColour : textColor;
+                Color tsColor = retainContextualColours ? Color.WHITE : textColor;
                 headerSegments.add(new TextSegment(ts, -1, width, tsColor));
                 headerWidth += width;
             }
@@ -213,6 +238,23 @@ public final class ChatRenderUtils {
                 String prefix = msg.isOutgoing() ? "To " : "From ";
                 headerSegments.add(new TextSegment(prefix, -1, metrics.stringWidth(prefix), textColor));
                 headerWidth += metrics.stringWidth(prefix);
+            }
+
+            if (showChannelName && msg.getChannelName() != null && !msg.getChannelName().isEmpty()) {
+                Color bracketColor = retainContextualColours ? Color.WHITE : textColor;
+                Color channelTextColor = retainContextualColours ? new Color(144, 144, 255) : textColor;
+
+                String open = "[";
+                headerSegments.add(new TextSegment(open, -1, metrics.stringWidth(open), bracketColor));
+                headerWidth += metrics.stringWidth(open);
+
+                String channelText = msg.getChannelName();
+                headerSegments.add(new TextSegment(channelText, -1, metrics.stringWidth(channelText), channelTextColor));
+                headerWidth += metrics.stringWidth(channelText);
+
+                String close = "] ";
+                headerSegments.add(new TextSegment(close, -1, metrics.stringWidth(close), bracketColor));
+                headerWidth += metrics.stringWidth(close);
             }
 
             List<TextSegment> senderSegments = parseTextWithIcons(msg.getSender(), metrics, modIcons,
@@ -236,14 +278,8 @@ public final class ChatRenderUtils {
             messageText = messageText + " (" + msg.getCount() + ")";
         }
 
-        // Use full color/icon parsing for system messages, simple icon parsing for sender messages
-        List<TextSegment> messageSegments;
-        if (hasSenderPrefix) {
-            messageSegments = parseTextWithIcons(messageText, metrics, modIcons, textColor, fontSize);
-        } else {
-            messageSegments = parseTextWithColoursAndIcons(messageText, metrics, modIcons,
-                    retainContextualColours, effectiveTextColor, fontSize, chatColorConfig);
-        }
+        List<TextSegment> messageSegments = parseTextWithColoursAndIcons(messageText, metrics, modIcons,
+                retainContextualColours, textColor, fontSize, chatColorConfig);
 
         if (!wrapText) {
             List<TextSegment> singleLine = new ArrayList<>(headerSegments);
@@ -291,6 +327,8 @@ public final class ChatRenderUtils {
         if (text == null || text.isEmpty()) {
             return segments;
         }
+
+        text = text.replace("<lt>", "<").replace("<gt>", ">");
 
         Matcher matcher = IMG_TAG_PATTERN.matcher(text);
         int lastEnd = 0;
@@ -403,6 +441,12 @@ public final class ChatRenderUtils {
                 i += colMatcher.end();
             } else if (colEndMatcher.lookingAt()) {
                 i += colEndMatcher.end();
+            } else if (text.startsWith("<lt>", i)) {
+                currentText.append('<');
+                i += 4;
+            } else if (text.startsWith("<gt>", i)) {
+                currentText.append('>');
+                i += 4;
             } else {
                 Matcher colUnknownMatcher = COL_UNKNOWN_PATTERN.matcher(text.substring(i));
                 if (colUnknownMatcher.lookingAt()) {
