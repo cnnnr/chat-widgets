@@ -1,10 +1,8 @@
 # Chat Widgets
 
-**Version 1.0.2**
+**Version 1.1.0**
 
-Displays game chat and private chat messages in their own customizable widgets. Supports custom colours, repositioning, game message collapsing, font size, and more.
-
-This plugin was created due to my own desire to move private messages and to peek at 1 or 2 game messages while my chat box is minimized.
+Create custom chat widgets that display any combination of message types. Each widget is independently configurable with its own message filters, positioning, fade behaviour, and more. Manage widgets from the sidebar panel — add, remove, reorder, and configure as many as you need.
 
 ## Examples
 
@@ -29,45 +27,44 @@ Display options are quite flexible. Below are some configuration examples.
 
 ## Configuration
 
-### General Settings
+Settings are split between the RuneLite config panel (global) and the sidebar panel (per-widget).
 
-| Setting          | Description                                                                                                                                            |
-| :--------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Enable**       | Enable/disable the widget. Game messages only render when the chatbox is minimized. Private messages also hide the client's split private chat widget. |
-| **Max Messages** | Maximum number of messages visible in the widget (1-20).                                                                                               |
-| **Text Colour**  | Base colour for message text. Supports alpha transparency.                                                                                             |
-| **Background**   | Background colour of the widget. Set alpha to 0 for transparent.                                                                                       |
+### Global Settings (Config Panel)
 
-### Appearance (Shared)
+| Setting                  | Description                                                                  |
+| :----------------------- | :--------------------------------------------------------------------------- |
+| **Hide Side Panel**      | Hide the Chat Widgets panel from the sidebar.                                |
+| **Font Size**            | Font size for all messages (Small, Regular).                                 |
+| **Text Shadow**          | Draw a shadow behind text for better readability.                            |
+| **Wrap Text**            | Wrap long messages to multiple lines instead of truncating.                  |
+| **Hide Private Chat**    | Hide the default split private chat widget.                                  |
+| **Smart Positioning**    | Automatically reposition widgets based on client mode and chatbox state.     |
+| **Collapse Duplicates**  | Merge consecutive identical messages into one with a count.                  |
+| **Show Channel Names**   | Show the channel name prefix for friends and clan chat messages.             |
+| **Show Timestamps**      | Prefix messages with a timestamp.                                            |
+| **Timestamp Format**     | Format string for timestamps (e.g., `[HH:mm:ss]`, `[HH:mm]`).              |
 
-| Setting                 | Description                                                                                                                   |
-| :---------------------- | :---------------------------------------------------------------------------------------------------------------------------- |
-| **Font Size**           | Font size for all messages (Small, Regular).                                                                                  |
-| **Merge Chat Widgets**  | Renders game and private messages in a single widget. Ignored if game messages are disabled or positioned relative to player. |
-| **Swap Stacking Order** | Swap which widget renders on top when not merged.                                                                             |
-| **Smart Positioning**   | Automatically reposition widgets based on client mode and chatbox state.                                                      |
-| **Wrap Text**           | Wrap long messages to multiple lines instead of truncating.                                                                   |
-| **Text Shadow**         | Draw a shadow behind text for better readability.                                                                             |
-| **Show Timestamps**     | Prefix messages with a timestamp.                                                                                             |
-| **Timestamp Format**    | Format string for timestamps (e.g., `[HH:mm:ss]`, `[HH:mm]`).                                                                 |
+#### Message Colours
 
-### Game Messages
+Per-category text colours for: Game, Public, Private, Friends, Clan, Guest Clan, GIM Clan, Trade, Challenge, Did You Know, Broadcast, and Autochat.
+
+### Per-Widget Settings (Sidebar Panel)
+
+Each widget is configured independently from the sidebar panel.
 
 | Setting                  | Description                                                                                                                                                                                      |
 | :----------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Position**             | Widget position mode. `Default` uses standard overlay positioning. `Below Player` and `Above Player` position the widget relative to your character (works best with fade and low max messages). |
-| **Contextual Colours**   | Retain colour formatting from in-game messages (coloured messages during boss fights, music tracks, etc.).                                                                                       |
-| **Collapse Duplicates**  | Combine identical consecutive messages with a count indicator.                                                                                                                                   |
-| **Hide Duplicate Count** | Hide the count badge when collapsing duplicates.                                                                                                                                                 |
-
-### Advanced Settings
-
-| Setting               | Description                                                                                                 |
-| :-------------------- | :---------------------------------------------------------------------------------------------------------- |
-| **Dynamic Height**    | Widget height adjusts based on message count rather than using fixed height.                                |
-| **Fade Out Duration** | Seconds before messages start fading out (0 = never fade). Messages fully disappear after 2x this duration. |
-| **Widget Width**      | Width of the widget in pixels (150-1024).                                                                   |
-| **Margin Top/Bottom** | Extra spacing above/below the widget.                                                                       |
+| **Title**                | Display name for the widget.                                                                                                                                                                     |
+| **Show**                 | Enable or disable the widget.                                                                                                                                                                    |
+| **Message Types**        | Which message categories this widget displays (Game, Public Chat, Private Chat, Friends Chat, Clan Chat, etc.).                                                                                  |
+| **Always Visible**       | When enabled, the widget is always shown. When disabled, it only appears when the chatbox is minimized.                                                                                          |
+| **Contextual Colours**   | Retain colour formatting from in-game messages (e.g. coloured boss kill messages, music tracks).                                                                                                 |
+| **Max Messages**         | Maximum number of messages visible in the widget (1–20).                                                                                                                                         |
+| **Fade Out (sec)**       | Seconds before messages start fading out (0 = never fade). Messages fully disappear after 2x this duration.                                                                                     |
+| **Position**             | Widget position mode. `Widget` uses standard overlay positioning. `Below Player` and `Above Player` position the widget relative to your character (works best with fade and low max messages).   |
+| **Dynamic Height**       | Widget height adjusts based on message count rather than using fixed height.                                                                                                                     |
+| **Margin Top**           | Extra spacing above the widget (0–200).                                                                                                                                                          |
+| **Margin Bottom**        | Extra spacing below the widget (0–200).                                                                                                                                                          |
 
 ## Tips
 
