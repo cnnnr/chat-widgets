@@ -407,32 +407,4 @@ public class ChatWidgetPanel extends PluginPanel {
 
         return row;
     }
-
-    private JPanel buildColorRow(String label, Color value, java.util.function.Consumer<Color> onChange) {
-        JPanel row = new JPanel(new BorderLayout());
-        row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JLabel lbl = new JLabel(label);
-        lbl.setForeground(Color.WHITE);
-        row.add(lbl, BorderLayout.CENTER);
-
-        JButton colorButton = new JButton();
-        colorButton.setPreferredSize(new Dimension(24, 24));
-        colorButton.setBackground(value);
-        colorButton.setFocusPainted(false);
-        colorButton.setBorderPainted(false);
-        colorButton.setOpaque(true);
-        colorButton.addActionListener(e -> {
-            Color chosen = JColorChooser.showDialog(this, label, value);
-            if (chosen != null) {
-                colorButton.setBackground(chosen);
-                onChange.accept(chosen);
-            }
-        });
-        row.add(colorButton, BorderLayout.EAST);
-
-        return row;
-    }
 }
