@@ -31,7 +31,9 @@ public enum MessageCategory {
             ChatMessageType.CLAN_MESSAGE,
             ChatMessageType.CLAN_GUEST_MESSAGE,
             ChatMessageType.CLAN_GIM_MESSAGE,
-            ChatMessageType.CLAN_CREATION_INVITATION
+            ChatMessageType.CLAN_CREATION_INVITATION,
+            ChatMessageType.NPC_SAY,
+            ChatMessageType.MESBOX
     ),
     PUBLIC_CHAT("Public Chat",
             ChatMessageType.PUBLICCHAT,

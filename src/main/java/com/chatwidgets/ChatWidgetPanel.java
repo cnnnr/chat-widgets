@@ -100,7 +100,7 @@ public class ChatWidgetPanel extends PluginPanel {
         headerRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
         headerRow.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        JLabel arrow = new JLabel(collapsed ? "\u25B6 " : "\u25BC ");
+        JLabel arrow = new JLabel(collapsed ? "⮞ " : "⮟ ");
         arrow.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 
         JLabel nameLabel = new JLabel(oc.getName());
@@ -116,7 +116,7 @@ public class ChatWidgetPanel extends PluginPanel {
         JPanel orderButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         orderButtons.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 
-        JLabel upBtn = new JLabel("\u25B2");
+        JLabel upBtn = new JLabel("\uD83E\uDC25");
         upBtn.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
         upBtn.setBorder(new EmptyBorder(0, 3, 0, 3));
         upBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -127,7 +127,7 @@ public class ChatWidgetPanel extends PluginPanel {
             }
         });
 
-        JLabel downBtn = new JLabel("\u25BC");
+        JLabel downBtn = new JLabel("\uD83E\uDC27");
         downBtn.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
         downBtn.setBorder(new EmptyBorder(0, 3, 0, 3));
         downBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -155,7 +155,7 @@ public class ChatWidgetPanel extends PluginPanel {
                 boolean nowCollapsed = !collapsedState.getOrDefault(oc.getId(), false);
                 collapsedState.put(oc.getId(), nowCollapsed);
                 content.setVisible(!nowCollapsed);
-                arrow.setText(nowCollapsed ? "\u25B6 " : "\u25BC ");
+                arrow.setText(nowCollapsed ? "⮞ " : "⮟ ");
                 section.revalidate();
                 section.repaint();
             }

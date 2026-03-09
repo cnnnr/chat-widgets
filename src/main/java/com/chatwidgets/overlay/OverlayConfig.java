@@ -36,12 +36,12 @@ public class OverlayConfig {
         this.id = UUID.randomUUID().toString();
         this.name = "New Widget";
         this.messageTypes = EnumSet.noneOf(ChatMessageType.class);
-        this.maxMessages = 5;
+        this.maxMessages = 10;
         this.fadeOutDuration = 0;
         this.widgetWidth = 512;
         this.marginTop = 0;
         this.marginBottom = 0;
-        this.dynamicHeight = true;
+        this.dynamicHeight = false;
         this.hideDuplicateCount = false;
         this.contextualColours = true;
         this.show = true;

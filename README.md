@@ -52,19 +52,19 @@ Per-category text colours for: Game, Public, Private, Friends, Clan, Guest Clan,
 
 Each widget is configured independently from the sidebar panel.
 
-| Setting                  | Description                                                                                                                                                                                      |
-| :----------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Title**                | Display name for the widget.                                                                                                                                                                     |
-| **Show**                 | Enable or disable the widget.                                                                                                                                                                    |
-| **Message Types**        | Which message categories this widget displays (Game, Public Chat, Private Chat, Friends Chat, Clan Chat, etc.).                                                                                  |
-| **Always Visible**       | When enabled, the widget is always shown. When disabled, it only appears when the chatbox is minimized.                                                                                          |
-| **Contextual Colours**   | Retain colour formatting from in-game messages (e.g. coloured boss kill messages, music tracks).                                                                                                 |
-| **Max Messages**         | Maximum number of messages visible in the widget (1–20).                                                                                                                                         |
+| Setting                  | Description                                                                                                                                                                                     |
+| :----------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Title**                | Display name for the widget.                                                                                                                                                                    |
+| **Show**                 | Enable or disable the widget.                                                                                                                                                                   |
+| **Message Types**        | Which message categories this widget displays (Game, Public Chat, Private Chat, Friends Chat, Clan Chat, etc.).                                                                                 |
+| **Always Visible**       | When enabled, the widget is always shown. When disabled, it only appears when the chatbox is minimized.                                                                                         |
+| **Contextual Colours**   | Retain colour formatting from in-game messages (e.g. coloured boss kill messages, music tracks).                                                                                                |
+| **Max Messages**         | Maximum number of messages visible in the widget (1–20).                                                                                                                                        |
 | **Fade Out (sec)**       | Seconds before messages start fading out (0 = never fade). Messages fully disappear after 2x this duration.                                                                                     |
-| **Position**             | Widget position mode. `Widget` uses standard overlay positioning. `Below Player` and `Above Player` position the widget relative to your character (works best with fade and low max messages).   |
-| **Dynamic Height**       | Widget height adjusts based on message count rather than using fixed height.                                                                                                                     |
-| **Margin Top**           | Extra spacing above the widget (0–200).                                                                                                                                                          |
-| **Margin Bottom**        | Extra spacing below the widget (0–200).                                                                                                                                                          |
+| **Position**             | Widget position mode. `Widget` uses standard overlay positioning. `Below Player` and `Above Player` position the widget relative to your character (works best with fade and low max messages). |
+| **Dynamic Height**       | Widget height adjusts based on message count rather than using fixed height. Disable this if you notice a subtle jitter effect when Fade Out is enabled.                                        |
+| **Margin Top**           | Extra spacing above the widget (0–200).                                                                                                                                                         |
+| **Margin Bottom**        | Extra spacing below the widget (0–200).                                                                                                                                                         |
 
 ## Tips
 
