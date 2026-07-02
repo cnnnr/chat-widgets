@@ -27,6 +27,7 @@ import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.ChatColorConfig;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.OverlayMenuClicked;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -357,7 +358,6 @@ public class ChatWidgetPlugin extends Plugin {
     @Subscribe
     public void onMenuOptionClicked(MenuOptionClicked event) {
         String option = event.getMenuOption();
-        String target = event.getMenuTarget();
         if (option == null) {
             return;
         }
@@ -365,7 +365,9 @@ public class ChatWidgetPlugin extends Plugin {
         // Handle chatbox tab "Clear history" options
         if (option.contains("Clear")) {
             if (option.contains("Game:")) {
-                clearMessagesForCategories(MessageCategory.GAME);
+                clearMessagesForCategories(
+                        MessageCategory.GAME,
+                        MessageCategory.GAME_CLAN);
                 return;
             }
             if (option.contains("Public:")) {
@@ -381,21 +383,27 @@ public class ChatWidgetPlugin extends Plugin {
                 return;
             }
             if (option.contains("Clan:")) {
-                clearMessagesForCategories(MessageCategory.CLAN_CHAT,
-                        MessageCategory.GUEST_CLAN_CHAT, MessageCategory.GIM_CLAN_CHAT);
+                clearMessagesForCategories(
+                        MessageCategory.GAME_CLAN,
+                        MessageCategory.CLAN_CHAT,
+                        MessageCategory.GUEST_CLAN_CHAT,
+                        MessageCategory.GIM_CLAN_CHAT);
                 return;
             }
         }
+    }
 
-        // Handle overlay-level "Clear [name] history" menu entries
-        if (target != null && option.equals("Clear") && target.endsWith(" history")) {
-            String overlayName = target.substring(0, target.length() - " history".length());
-            for (OverlayConfig oc : overlayConfigs) {
-                if (oc.getName().equals(overlayName)) {
-                    clearMessagesForTypes(oc.getMessageTypes());
-                    return;
-                }
-            }
+    /**
+     * Handles clicks on the overlay-level "Clear [name] history" right-click entries. These are
+     * {@link net.runelite.client.ui.overlay.OverlayMenuEntry} entries dispatched via
+     * {@link OverlayMenuClicked} (not {@code MenuOptionClicked}), so we use the clicked overlay
+     * reference directly rather than parsing the menu target string.
+     */
+    @Subscribe
+    public void onOverlayMenuClicked(OverlayMenuClicked event) {
+        if (event.getOverlay() instanceof DynamicChatOverlay) {
+            DynamicChatOverlay overlay = (DynamicChatOverlay) event.getOverlay();
+            clearMessagesForTypes(overlay.getOverlayConfig().getMessageTypes());
         }
     }
 
