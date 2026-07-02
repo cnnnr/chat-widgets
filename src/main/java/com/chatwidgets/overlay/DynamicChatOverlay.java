@@ -259,6 +259,7 @@ public class DynamicChatOverlay extends Overlay {
 
         switch (MessageCategory.fromType(type)) {
             case GAME:
+            case GAME_CLAN:
                 return globalConfig.gameColour();
             case TRADE:
                 return globalConfig.tradeColour();
