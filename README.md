@@ -40,6 +40,7 @@ Settings are split between the RuneLite config panel (global) and the sidebar pa
 | **Smart Positioning**    | Automatically reposition widgets based on client mode and chatbox state.     |
 | **Collapse Duplicates**  | Merge consecutive identical messages into one with a count.                  |
 | **Show Channel Names**   | Show the channel name prefix for friends and clan chat messages.             |
+| **Use Chat Filter**      | Hide/censor widget messages using RuneLite's Chat Filter plugin's Filtered words & regex lists and its Filter Type.  |
 | **Timestamp Format**     | Format string for timestamps, shared by all widgets (e.g., `[HH:mm:ss]`, `[HH:mm]`). Enable timestamps per widget below. |
 
 #### Message Colours

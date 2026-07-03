@@ -32,6 +32,9 @@ import net.runelite.client.events.OverlayMenuClicked;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.PluginManager;
+import net.runelite.client.plugins.chatfilter.ChatFilterConfig;
+import net.runelite.client.plugins.chatfilter.ChatFilterPlugin;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -144,8 +147,15 @@ public class ChatWidgetPlugin extends Plugin {
     @Inject
     private Gson gson;
 
+    @Inject
+    private PluginManager pluginManager;
+
     // Shared message pool
     private final CopyOnWriteArrayList<WidgetMessage> messages = new CopyOnWriteArrayList<>();
+
+    // Mirrors the Chat Filter plugin's word/regex lists when "Use Chat Filter" is enabled
+    private final ChatMessageFilter chatMessageFilter = new ChatMessageFilter();
+    private Plugin chatFilterPlugin;
 
     // Dynamic overlays
     private final List<OverlayConfig> overlayConfigs = new ArrayList<>();
@@ -180,6 +190,7 @@ public class ChatWidgetPlugin extends Plugin {
         migrateTimestampSetting();
         migrateFontSizeSetting();
         armUpdateNotice();
+        rebuildChatFilter();
 
         for (OverlayConfig oc : overlayConfigs) {
             addOverlay(oc);
@@ -527,6 +538,11 @@ public class ChatWidgetPlugin extends Plugin {
         }
         message = message.trim();
 
+        // Drop messages matching the Chat Filter plugin's lists — only while that plugin is enabled.
+        if (config.useChatFilter() && isChatFilterEnabled() && chatMessageFilter.matches(message)) {
+            return;
+        }
+
         String sender = cleanSender(event.getName());
         String channelName = cleanSender(event.getSender());
         boolean isOutgoing = type == ChatMessageType.PRIVATECHATOUT;
@@ -656,6 +672,11 @@ public class ChatWidgetPlugin extends Plugin {
 
     @Subscribe
     public void onConfigChanged(ConfigChanged event) {
+        // Keep our copy of the Chat Filter lists in sync as the user edits them.
+        if ("chatfilter".equals(event.getGroup())) {
+            rebuildChatFilter();
+            return;
+        }
         if (!event.getGroup().equals(CONFIG_GROUP)) {
             return;
         }
@@ -669,6 +690,28 @@ public class ChatWidgetPlugin extends Plugin {
         if ("hidePrivateChat".equals(event.getKey())) {
             updatePmWidgetVisibility();
         }
+    }
+
+    /** Recompiles the Chat Filter patterns from the Chat Filter plugin's live config. */
+    private void rebuildChatFilter() {
+        chatMessageFilter.rebuild(configManager.getConfig(ChatFilterConfig.class));
+    }
+
+    /**
+     * True when RuneLite's built-in Chat Filter plugin is currently enabled. The config lists are
+     * always readable, but we only filter when the plugin itself is on — otherwise the user isn't
+     * filtering their chat and shouldn't have widget messages silently removed.
+     */
+    private boolean isChatFilterEnabled() {
+        if (chatFilterPlugin == null) {
+            for (Plugin p : pluginManager.getPlugins()) {
+                if (p instanceof ChatFilterPlugin) {
+                    chatFilterPlugin = p;
+                    break;
+                }
+            }
+        }
+        return chatFilterPlugin != null && pluginManager.isPluginEnabled(chatFilterPlugin);
     }
 
     // --- Message access for overlays ---
