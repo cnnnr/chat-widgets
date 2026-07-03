@@ -1,6 +1,5 @@
 package com.chatwidgets;
 
-import com.chatwidgets.model.FontSize;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -27,11 +26,6 @@ public interface ChatWidgetConfig extends Config {
     @ConfigSection(name = "Message Colours", description = "Text colour per message category", position = 1, closedByDefault = false)
     String coloursSection = "colours";
 
-    @ConfigItem(keyName = "fontSize", name = "Font Size", description = "Font size for all messages", section = appearanceSection, position = 0)
-    default FontSize fontSize() {
-        return FontSize.REGULAR;
-    }
-
     @ConfigItem(keyName = "textShadow", name = "Text Shadow", description = "Draw shadow behind text", section = appearanceSection, position = 1)
     default boolean textShadow() {
         return true;
@@ -42,7 +36,7 @@ public interface ChatWidgetConfig extends Config {
         return true;
     }
 
-    @ConfigItem(keyName = "hidePrivateChat", name = "Hide Private Chat", description = "Hide the default split private chat widget", section = appearanceSection, position = 3)
+    @ConfigItem(keyName = "hidePrivateChat", name = "Hide Default Private Chat", description = "Hide the default split private chat widget", section = appearanceSection, position = 3)
     default boolean hidePrivateChat() {
         return true;
     }
@@ -62,12 +56,12 @@ public interface ChatWidgetConfig extends Config {
         return true;
     }
 
-    @ConfigItem(keyName = "showTimestamp", name = "Show Timestamps", description = "Prefix messages with a timestamp", section = appearanceSection, position = 7)
-    default boolean showTimestamp() {
+    @ConfigItem(keyName = "useChatFilter", name = "Use Chat Filter", description = "Hide/censor messages using RuneLite's Chat Filter plugin's word & regex lists and Filter Type", section = appearanceSection, position = 7)
+    default boolean useChatFilter() {
         return false;
     }
 
-    @ConfigItem(keyName = "timestampFormat", name = "Timestamp Format", description = "Format for timestamps (e.g. [HH:mm:ss], [HH:mm])", section = appearanceSection, position = 8)
+    @ConfigItem(keyName = "timestampFormat", name = "Timestamp Format", description = "Format for timestamps, shared by all widgets (e.g. [HH:mm:ss], [HH:mm]). Enable timestamps per widget in the side panel.", section = appearanceSection, position = 8)
     default String timestampFormat() {
         return "[HH:mm]";
     }

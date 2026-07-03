@@ -1,5 +1,6 @@
 package com.chatwidgets;
 
+import com.chatwidgets.model.FontSize;
 import com.chatwidgets.model.MessageCategory;
 import com.chatwidgets.model.MessageMergeRule;
 import com.chatwidgets.model.WidgetMessage;
@@ -27,11 +28,16 @@ import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.ChatColorConfig;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.OverlayMenuClicked;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.PluginManager;
+import net.runelite.client.plugins.chatfilter.ChatFilterConfig;
+import net.runelite.client.plugins.chatfilter.ChatFilterPlugin;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.components.colorpicker.ColorPickerManager;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.util.ImageUtil;
@@ -57,8 +63,16 @@ import java.util.regex.Pattern;
         "move", "custom", "customize", "resizable", "transparent" })
 public class ChatWidgetPlugin extends Plugin {
 
+    public static final boolean DEBUG = false;
+
     private static final String CONFIG_GROUP = "chatwidgets";
     private static final String OVERLAY_CONFIGS_KEY = "overlayConfigs";
+    private static final String LEGACY_SHOW_TIMESTAMP_KEY = "showTimestamp";
+    private static final String TIMESTAMP_MIGRATED_KEY = "timestampMigratedToPerWidget";
+    private static final String LEGACY_FONT_SIZE_KEY = "fontSize";
+    private static final String FONT_SIZE_MIGRATED_KEY = "fontSizeMigratedToPerWidget";
+    private static final String PLUGIN_VERSION = loadPluginVersion();
+    private static final String LAST_UPDATE_NOTICE_VERSION_KEY = "lastUpdateNoticeVersion";
     private static final int MAX_POOL_SIZE = 200;
 
     private static final Pattern BOSS_KC_PATTERN = Pattern.compile("Your .+ count is:");
@@ -134,8 +148,18 @@ public class ChatWidgetPlugin extends Plugin {
     @Inject
     private Gson gson;
 
+    @Inject
+    private PluginManager pluginManager;
+
+    @Inject
+    private ColorPickerManager colorPickerManager;
+
     // Shared message pool
     private final CopyOnWriteArrayList<WidgetMessage> messages = new CopyOnWriteArrayList<>();
+
+    // Mirrors the Chat Filter plugin's word/regex lists when "Use Chat Filter" is enabled
+    private final ChatMessageFilter chatMessageFilter = new ChatMessageFilter();
+    private Plugin chatFilterPlugin;
 
     // Dynamic overlays
     private final List<OverlayConfig> overlayConfigs = new ArrayList<>();
@@ -144,6 +168,8 @@ public class ChatWidgetPlugin extends Plugin {
     private NavigationButton navButton;
     private ChatWidgetPanel panel;
     private boolean pmWidgetsHidden = false;
+    private boolean firstRun = false;
+    private boolean updateNoticePending = false;
 
     // Chat command support — track messages that may be updated by Chat Commands plugin
     private final List<PendingChatCommand> pendingCommands = new ArrayList<>();
@@ -165,6 +191,10 @@ public class ChatWidgetPlugin extends Plugin {
     @Override
     protected void startUp() {
         loadOverlayConfigs();
+        migrateTimestampSetting();
+        migrateFontSizeSetting();
+        armUpdateNotice();
+        rebuildChatFilter();
 
         for (OverlayConfig oc : overlayConfigs) {
             addOverlay(oc);
@@ -213,6 +243,10 @@ public class ChatWidgetPlugin extends Plugin {
         return overlayConfigs;
     }
 
+    public ColorPickerManager getColorPickerManager() {
+        return colorPickerManager;
+    }
+
     public void addNewOverlay() {
         OverlayConfig oc = new OverlayConfig();
         overlayConfigs.add(oc);
@@ -236,6 +270,30 @@ public class ChatWidgetPlugin extends Plugin {
             overlayManager.remove(toRemove);
             overlays.remove(toRemove);
         }
+        saveOverlayConfigs();
+        updatePmWidgetVisibility();
+        if (panel != null) {
+            panel.rebuild();
+        }
+    }
+
+    /**
+     * Deletes every existing widget and restores the two defaults created on first install
+     * (same set and order as {@link #loadOverlayConfigs()}). Destructive — callers should confirm.
+     */
+    public void resetOverlays() {
+        for (DynamicChatOverlay overlay : overlays) {
+            overlayManager.remove(overlay);
+        }
+        overlays.clear();
+        overlayConfigs.clear();
+
+        overlayConfigs.add(OverlayConfig.defaultPrivateWidget());
+        overlayConfigs.add(OverlayConfig.defaultAllWidget());
+        for (OverlayConfig oc : overlayConfigs) {
+            addOverlay(oc);
+        }
+
         saveOverlayConfigs();
         updatePmWidgetVisibility();
         if (panel != null) {
@@ -296,6 +354,7 @@ public class ChatWidgetPlugin extends Plugin {
                 List<OverlayConfig> loaded = gson.fromJson(json, listType);
                 if (loaded != null && !loaded.isEmpty()) {
                     overlayConfigs.addAll(loaded);
+                    firstRun = false;
                     return;
                 }
             } catch (Exception e) {
@@ -303,14 +362,97 @@ public class ChatWidgetPlugin extends Plugin {
             }
         }
         // First run — create defaults
-        overlayConfigs.add(OverlayConfig.defaultAllWidget());
+        firstRun = true;
         overlayConfigs.add(OverlayConfig.defaultPrivateWidget());
+        overlayConfigs.add(OverlayConfig.defaultAllWidget());
         saveOverlayConfigs();
     }
 
     public void saveOverlayConfigs() {
         String json = gson.toJson(overlayConfigs);
         configManager.setConfiguration(CONFIG_GROUP, OVERLAY_CONFIGS_KEY, json);
+    }
+
+    /**
+     * One-time migration of the former global "Show Timestamps" toggle to the per-widget
+     * {@link OverlayConfig#isShowTimestamp()} setting. The global {@code @ConfigItem} has been
+     * removed, but its previously-persisted value survives in the config store and is read here by
+     * key. If it was enabled, every existing widget inherits it so no one loses their timestamps.
+     * Guarded by a flag so it never re-applies (e.g. after a user turns a widget's toggle off).
+     */
+    private void migrateTimestampSetting() {
+        if ("true".equals(configManager.getConfiguration(CONFIG_GROUP, TIMESTAMP_MIGRATED_KEY))) {
+            return;
+        }
+        if ("true".equals(configManager.getConfiguration(CONFIG_GROUP, LEGACY_SHOW_TIMESTAMP_KEY))) {
+            for (OverlayConfig oc : overlayConfigs) {
+                oc.setShowTimestamp(true);
+            }
+            saveOverlayConfigs();
+        }
+        configManager.setConfiguration(CONFIG_GROUP, TIMESTAMP_MIGRATED_KEY, true);
+    }
+
+    /**
+     * One-time migration of the former global "Font Size" setting to the per-widget
+     * {@link OverlayConfig#getFontSize()} setting. Reads the orphaned global value (persisted by
+     * enum name) directly by key and applies it to every existing widget. Unlike the timestamp
+     * migration, this always writes an effective value (defaulting to {@link FontSize#REGULAR}) so
+     * widgets deserialized before the field existed are normalized off null. Guarded so it runs once.
+     */
+    private void migrateFontSizeSetting() {
+        if ("true".equals(configManager.getConfiguration(CONFIG_GROUP, FONT_SIZE_MIGRATED_KEY))) {
+            return;
+        }
+        FontSize legacy = FontSize.REGULAR;
+        String stored = configManager.getConfiguration(CONFIG_GROUP, LEGACY_FONT_SIZE_KEY);
+        if (stored != null && !stored.isEmpty()) {
+            try {
+                legacy = FontSize.valueOf(stored);
+            } catch (IllegalArgumentException ignored) {
+                // Unrecognized value — keep the default.
+            }
+        }
+        for (OverlayConfig oc : overlayConfigs) {
+            oc.setFontSize(legacy);
+        }
+        saveOverlayConfigs();
+        configManager.setConfiguration(CONFIG_GROUP, FONT_SIZE_MIGRATED_KEY, true);
+    }
+
+    /** Reads the build-injected version from version.properties; null in dev / unfiltered runs. */
+    private static String loadPluginVersion() {
+        try (java.io.InputStream in = ChatWidgetPlugin.class.getResourceAsStream("/version.properties")) {
+            if (in != null) {
+                java.util.Properties props = new java.util.Properties();
+                props.load(in);
+                String v = props.getProperty("version");
+                if (v != null && !v.isEmpty() && !v.contains("$")) {
+                    return v;
+                }
+            }
+        } catch (java.io.IOException e) {
+            // fall through to null — no update notice rather than a wrong one
+        }
+        return null;
+    }
+
+    /**
+     * Arms the one-time "Chat Widgets has been updated" notice when the running {@link #PLUGIN_VERSION}
+     * differs from the last version we announced. Suppressed on a brand-new install (nothing to
+     * "update" from). The notice is actually posted from {@link #onGameTick} once the player is
+     * logged in and the chat is ready.
+     */
+    private void armUpdateNotice() {
+        if (PLUGIN_VERSION == null) {
+            return;  // version unavailable (dev build) — don't fire an update notice
+        }
+        if (firstRun) {
+            configManager.setConfiguration(CONFIG_GROUP, LAST_UPDATE_NOTICE_VERSION_KEY, PLUGIN_VERSION);
+            return;
+        }
+        String lastNoticeVersion = configManager.getConfiguration(CONFIG_GROUP, LAST_UPDATE_NOTICE_VERSION_KEY);
+        updateNoticePending = !PLUGIN_VERSION.equals(lastNoticeVersion);
     }
 
     // --- PM widget visibility ---
@@ -357,7 +499,6 @@ public class ChatWidgetPlugin extends Plugin {
     @Subscribe
     public void onMenuOptionClicked(MenuOptionClicked event) {
         String option = event.getMenuOption();
-        String target = event.getMenuTarget();
         if (option == null) {
             return;
         }
@@ -365,7 +506,9 @@ public class ChatWidgetPlugin extends Plugin {
         // Handle chatbox tab "Clear history" options
         if (option.contains("Clear")) {
             if (option.contains("Game:")) {
-                clearMessagesForCategories(MessageCategory.GAME);
+                clearMessagesForCategories(
+                        MessageCategory.GAME,
+                        MessageCategory.GAME_CLAN);
                 return;
             }
             if (option.contains("Public:")) {
@@ -381,27 +524,37 @@ public class ChatWidgetPlugin extends Plugin {
                 return;
             }
             if (option.contains("Clan:")) {
-                clearMessagesForCategories(MessageCategory.CLAN_CHAT,
-                        MessageCategory.GUEST_CLAN_CHAT, MessageCategory.GIM_CLAN_CHAT);
+                clearMessagesForCategories(
+                        MessageCategory.GAME_CLAN,
+                        MessageCategory.CLAN_CHAT,
+                        MessageCategory.GUEST_CLAN_CHAT,
+                        MessageCategory.GIM_CLAN_CHAT);
                 return;
             }
         }
+    }
 
-        // Handle overlay-level "Clear [name] history" menu entries
-        if (target != null && option.equals("Clear") && target.endsWith(" history")) {
-            String overlayName = target.substring(0, target.length() - " history".length());
-            for (OverlayConfig oc : overlayConfigs) {
-                if (oc.getName().equals(overlayName)) {
-                    clearMessagesForTypes(oc.getMessageTypes());
-                    return;
-                }
-            }
+    /**
+     * Handles clicks on the overlay-level "Clear [name] history" right-click entries. These are
+     * {@link net.runelite.client.ui.overlay.OverlayMenuEntry} entries dispatched via
+     * {@link OverlayMenuClicked} (not {@code MenuOptionClicked}), so we use the clicked overlay
+     * reference directly rather than parsing the menu target string.
+     */
+    @Subscribe
+    public void onOverlayMenuClicked(OverlayMenuClicked event) {
+        if (event.getOverlay() instanceof DynamicChatOverlay) {
+            DynamicChatOverlay overlay = (DynamicChatOverlay) event.getOverlay();
+            clearMessagesForTypes(overlay.getOverlayConfig().getMessageTypes());
         }
     }
 
     @Subscribe
     public void onChatMessage(ChatMessage event) {
         ChatMessageType type = event.getType();
+
+        if (DEBUG) {
+            prependDebugType(event);
+        }
 
         if (!ALL_SUPPORTED_TYPES.contains(type)) {
             return;
@@ -412,6 +565,11 @@ public class ChatWidgetPlugin extends Plugin {
             return;
         }
         message = message.trim();
+
+        // Drop messages matching the Chat Filter plugin's lists — only while that plugin is enabled.
+        if (config.useChatFilter() && isChatFilterEnabled() && chatMessageFilter.matches(message)) {
+            return;
+        }
 
         String sender = cleanSender(event.getName());
         String channelName = cleanSender(event.getSender());
@@ -498,6 +656,14 @@ public class ChatWidgetPlugin extends Plugin {
 
     @Subscribe
     public void onGameTick(GameTick event) {
+        if (updateNoticePending && client.getGameState() == GameState.LOGGED_IN) {
+            updateNoticePending = false;
+            client.addChatMessage(ChatMessageType.CONSOLE, "",
+                    "<col=00b000>Chat Widgets updated to v" + PLUGIN_VERSION
+                            + " — new per-widget Font Size, Timestamps & Input Preview; Game and Clan are now separate message types. See the side panel!</col>", null);
+            configManager.setConfiguration(CONFIG_GROUP, LAST_UPDATE_NOTICE_VERSION_KEY, PLUGIN_VERSION);
+        }
+
         if (pendingCommands.isEmpty()) {
             return;
         }
@@ -534,6 +700,11 @@ public class ChatWidgetPlugin extends Plugin {
 
     @Subscribe
     public void onConfigChanged(ConfigChanged event) {
+        // Keep our copy of the Chat Filter lists in sync as the user edits them.
+        if ("chatfilter".equals(event.getGroup())) {
+            rebuildChatFilter();
+            return;
+        }
         if (!event.getGroup().equals(CONFIG_GROUP)) {
             return;
         }
@@ -547,6 +718,28 @@ public class ChatWidgetPlugin extends Plugin {
         if ("hidePrivateChat".equals(event.getKey())) {
             updatePmWidgetVisibility();
         }
+    }
+
+    /** Recompiles the Chat Filter patterns from the Chat Filter plugin's live config. */
+    private void rebuildChatFilter() {
+        chatMessageFilter.rebuild(configManager.getConfig(ChatFilterConfig.class));
+    }
+
+    /**
+     * True when RuneLite's built-in Chat Filter plugin is currently enabled. The config lists are
+     * always readable, but we only filter when the plugin itself is on — otherwise the user isn't
+     * filtering their chat and shouldn't have widget messages silently removed.
+     */
+    private boolean isChatFilterEnabled() {
+        if (chatFilterPlugin == null) {
+            for (Plugin p : pluginManager.getPlugins()) {
+                if (p instanceof ChatFilterPlugin) {
+                    chatFilterPlugin = p;
+                    break;
+                }
+            }
+        }
+        return chatFilterPlugin != null && pluginManager.isPluginEnabled(chatFilterPlugin);
     }
 
     // --- Message access for overlays ---
@@ -637,6 +830,20 @@ public class ChatWidgetPlugin extends Plugin {
             return "";
         }
         return text.replaceAll("</?col[^>]*>", "");
+    }
+
+    /**
+     * DEBUG aid: prepends the message's {@link ChatMessageType} to the live chatbox line so the
+     * type of every message (including ones the plugin doesn't capture) is visible in-game. Only
+     * the chatbox node is modified; the widget pool reads {@code event.getMessage()}, a separate
+     * copy, so widgets still render the clean message.
+     */
+    private void prependDebugType(ChatMessage event) {
+        MessageNode node = event.getMessageNode();
+        if (node == null) {
+            return;
+        }
+        node.setValue("<col=ff0000>[" + event.getType().name() + "]</col> " + node.getValue());
     }
 
     private void clearMessagesForCategories(MessageCategory... categories) {

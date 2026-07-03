@@ -1,9 +1,11 @@
 package com.chatwidgets.overlay;
 
+import com.chatwidgets.model.FontSize;
 import com.chatwidgets.model.MessageCategory;
 import com.chatwidgets.model.WidgetPosition;
 import net.runelite.api.ChatMessageType;
 
+import java.awt.Color;
 import java.util.EnumSet;
 import java.util.Set;
 import java.util.UUID;
@@ -17,6 +19,9 @@ import java.util.UUID;
  * via {@link #defaultAllWidget()} and {@link #defaultPrivateWidget()}.
  */
 public class OverlayConfig {
+    /** Fully-transparent background — the "no background" / disabled state. */
+    private static final Color TRANSPARENT = new Color(0, 0, 0, 0);
+
     private String id;
     private String name;
     private Set<ChatMessageType> messageTypes;
@@ -28,8 +33,12 @@ public class OverlayConfig {
     private boolean dynamicHeight;
     private boolean hideDuplicateCount;
     private boolean contextualColours;
+    private boolean showTimestamp;
+    private boolean showInputPreview;
     private boolean show;
     private boolean alwaysVisible;
+    private FontSize fontSize;
+    private Color backgroundColour;
     private WidgetPosition position;
 
     public OverlayConfig() {
@@ -44,8 +53,12 @@ public class OverlayConfig {
         this.dynamicHeight = false;
         this.hideDuplicateCount = false;
         this.contextualColours = true;
+        this.showTimestamp = false;
+        this.showInputPreview = false;
         this.show = true;
         this.alwaysVisible = false;
+        this.fontSize = FontSize.REGULAR;
+        this.backgroundColour = TRANSPARENT;
         this.position = WidgetPosition.WIDGET;
     }
 
@@ -64,7 +77,9 @@ public class OverlayConfig {
                 types.addAll(category.getTypes());
             }
         }
-        return createDefault("All Messages", types, false);
+        OverlayConfig config = createDefault("All Messages", types, false);
+        config.showInputPreview = true;
+        return config;
     }
 
     public static OverlayConfig defaultPrivateWidget() {
@@ -159,6 +174,40 @@ public class OverlayConfig {
 
     public void setContextualColours(boolean contextualColours) {
         this.contextualColours = contextualColours;
+    }
+
+    public boolean isShowTimestamp() {
+        return showTimestamp;
+    }
+
+    public void setShowTimestamp(boolean showTimestamp) {
+        this.showTimestamp = showTimestamp;
+    }
+
+    public boolean isShowInputPreview() {
+        return showInputPreview;
+    }
+
+    public void setShowInputPreview(boolean showInputPreview) {
+        this.showInputPreview = showInputPreview;
+    }
+
+    public FontSize getFontSize() {
+        // Widgets serialized before this field existed deserialize fontSize as null.
+        return fontSize != null ? fontSize : FontSize.REGULAR;
+    }
+
+    public void setFontSize(FontSize fontSize) {
+        this.fontSize = fontSize;
+    }
+
+    public Color getBackgroundColour() {
+        // Widgets serialized before this field existed deserialize backgroundColour as null.
+        return backgroundColour != null ? backgroundColour : TRANSPARENT;
+    }
+
+    public void setBackgroundColour(Color backgroundColour) {
+        this.backgroundColour = backgroundColour;
     }
 
     public boolean isShow() {

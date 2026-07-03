@@ -1,11 +1,15 @@
 package com.chatwidgets;
 
+import com.chatwidgets.model.FontSize;
 import com.chatwidgets.model.MessageCategory;
 import com.chatwidgets.model.WidgetPosition;
 import com.chatwidgets.overlay.OverlayConfig;
 import net.runelite.api.ChatMessageType;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.ui.components.colorpicker.RuneliteColorPicker;
+import net.runelite.client.util.ImageUtil;
+import net.runelite.client.util.LinkBrowser;
 
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;
@@ -14,6 +18,7 @@ import javax.swing.border.MatteBorder;
 import java.awt.*;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.image.BufferedImage;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -54,10 +59,41 @@ public class ChatWidgetPanel extends PluginPanel {
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         headerPanel.add(title, BorderLayout.WEST);
 
-        JButton addButton = new JButton("+ Add");
+        JPanel headerButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        headerButtons.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+        JButton supportButton = new JButton();
+        BufferedImage supportIcon = ImageUtil.loadImageResource(ChatWidgetPanel.class, "/support.png");
+        if (supportIcon != null) {
+            supportButton.setIcon(new ImageIcon(supportIcon));
+        }
+        supportButton.setFocusPainted(false);
+        supportButton.setToolTipText("Support");
+        supportButton.setMargin(new Insets(1, 6, 1, 6));
+        supportButton.addActionListener(e -> LinkBrowser.browse("https://buymeacoffee.com/cnnnr"));
+
+        JButton addButton = new JButton("+");
+        addButton.setToolTipText("Add new widget");
         addButton.setFocusPainted(false);
         addButton.addActionListener(e -> plugin.addNewOverlay());
-        headerPanel.add(addButton, BorderLayout.EAST);
+        headerButtons.add(addButton);
+
+        JButton resetButton = new JButton("⟳");
+        resetButton.setFocusPainted(false);
+        resetButton.setToolTipText("Reset to the default widgets");
+        resetButton.setMargin(new Insets(1, 6, 1, 6));
+        resetButton.addActionListener(e -> {
+            int result = JOptionPane.showConfirmDialog(this,
+                    "Delete all chat widgets and restore the default 2?",
+                    "Reset Chat Widgets", JOptionPane.YES_NO_OPTION);
+            if (result == JOptionPane.YES_OPTION) {
+                plugin.resetOverlays();
+            }
+        });
+        headerButtons.add(resetButton);
+        headerButtons.add(supportButton);
+
+        headerPanel.add(headerButtons, BorderLayout.EAST);
 
         contentPanel.add(headerPanel);
 
@@ -184,6 +220,19 @@ public class ChatWidgetPanel extends PluginPanel {
         }));
         content.add(buildCheckbox("Contextual Colours", oc.isContextualColours(), v -> {
             oc.setContextualColours(v);
+            plugin.onOverlayConfigChanged();
+        }));
+        content.add(buildColorRow("Background", oc::getBackgroundColour, oc::setBackgroundColour));
+        content.add(buildCheckbox("Show Timestamps", oc.isShowTimestamp(), v -> {
+            oc.setShowTimestamp(v);
+            plugin.onOverlayConfigChanged();
+        }));
+        content.add(buildCheckbox("Show Input Preview", oc.isShowInputPreview(), v -> {
+            oc.setShowInputPreview(v);
+            plugin.onOverlayConfigChanged();
+        }));
+        content.add(buildComboRow("Font Size", FontSize.values(), oc.getFontSize(), v -> {
+            oc.setFontSize(v);
             plugin.onOverlayConfigChanged();
         }));
         content.add(buildSpinnerRow("Max Messages", oc.getMaxMessages(), 1, 20, v -> {
@@ -342,6 +391,37 @@ public class ChatWidgetPanel extends PluginPanel {
         Component strut = Box.createVerticalStrut(height);
         ((JComponent) strut).setAlignmentX(Component.LEFT_ALIGNMENT);
         return strut;
+    }
+
+    private JPanel buildColorRow(String label, java.util.function.Supplier<Color> getter,
+            java.util.function.Consumer<Color> setter) {
+        JPanel row = new JPanel(new BorderLayout());
+        row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel lbl = new JLabel(label);
+        lbl.setForeground(Color.WHITE);
+        row.add(lbl, BorderLayout.CENTER);
+
+        JButton swatch = new JButton();
+        swatch.setPreferredSize(new Dimension(90, 24));
+        swatch.setFocusPainted(false);
+        swatch.setBackground(getter.get());
+        swatch.addActionListener(e -> {
+            RuneliteColorPicker picker = plugin.getColorPickerManager().create(
+                    SwingUtilities.getWindowAncestor(this), getter.get(), label, false);
+            picker.setLocationRelativeTo(this);
+            picker.setOnColorChange(c -> {
+                setter.accept(c);
+                swatch.setBackground(c);
+            });
+            picker.setOnClose(c -> plugin.onOverlayConfigChanged());
+            picker.setVisible(true);
+        });
+        row.add(swatch, BorderLayout.EAST);
+
+        return row;
     }
 
     private JPanel buildCheckbox(String label, boolean value, java.util.function.Consumer<Boolean> onChange) {
