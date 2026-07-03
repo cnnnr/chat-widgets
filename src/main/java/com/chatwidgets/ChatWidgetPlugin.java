@@ -71,7 +71,7 @@ public class ChatWidgetPlugin extends Plugin {
     private static final String TIMESTAMP_MIGRATED_KEY = "timestampMigratedToPerWidget";
     private static final String LEGACY_FONT_SIZE_KEY = "fontSize";
     private static final String FONT_SIZE_MIGRATED_KEY = "fontSizeMigratedToPerWidget";
-    private static final String PLUGIN_VERSION = "1.1.1";
+    private static final String PLUGIN_VERSION = "1.2.0";
     private static final String LAST_UPDATE_NOTICE_VERSION_KEY = "lastUpdateNoticeVersion";
     private static final int MAX_POOL_SIZE = 200;
 
@@ -639,8 +639,8 @@ public class ChatWidgetPlugin extends Plugin {
         if (updateNoticePending && client.getGameState() == GameState.LOGGED_IN) {
             updateNoticePending = false;
             client.addChatMessage(ChatMessageType.CONSOLE, "",
-                    "<col=00b000>Chat Widgets has been updated to v" + PLUGIN_VERSION
-                            + ". New: per-widget Font Size & Timestamps -- see the side panel.</col>", null);
+                    "<col=00b000>Chat Widgets updated to v" + PLUGIN_VERSION
+                            + " — new per-widget Font Size, Timestamps & Input Preview; Game and Clan are now separate message types. See the side panel!</col>", null);
             configManager.setConfiguration(CONFIG_GROUP, LAST_UPDATE_NOTICE_VERSION_KEY, PLUGIN_VERSION);
         }
 

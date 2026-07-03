@@ -1,6 +1,6 @@
 # Chat Widgets
 
-**Version 1.1.0**
+**Version 1.2.0**
 
 Create custom chat widgets that display any combination of message types. Each widget is independently configurable with its own message filters, positioning, fade behaviour, and more. Manage widgets from the sidebar panel — add, remove, reorder, and configure as many as you need.
 
