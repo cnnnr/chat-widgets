@@ -186,6 +186,10 @@ public class ChatWidgetPanel extends PluginPanel {
             oc.setContextualColours(v);
             plugin.onOverlayConfigChanged();
         }));
+        content.add(buildCheckbox("Show Timestamps", oc.isShowTimestamp(), v -> {
+            oc.setShowTimestamp(v);
+            plugin.onOverlayConfigChanged();
+        }));
         content.add(buildSpinnerRow("Max Messages", oc.getMaxMessages(), 1, 20, v -> {
             oc.setMaxMessages(v);
             plugin.onOverlayConfigChanged();

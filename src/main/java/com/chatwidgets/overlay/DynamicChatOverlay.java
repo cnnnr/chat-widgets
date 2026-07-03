@@ -133,7 +133,7 @@ public class DynamicChatOverlay extends Overlay {
                         widgetWidth, currentTime, fadeOutMs, wrapText, msgColor,
                         retainContextualColours, hideDuplicateCount,
                         fontSize, client.getModIcons(),
-                        globalConfig.showTimestamp(), globalConfig.timestampFormat(),
+                        overlayConfig.isShowTimestamp(), globalConfig.timestampFormat(),
                         globalConfig.showChannelName(),
                         chatColorConfig);
 

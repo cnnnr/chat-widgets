@@ -28,6 +28,7 @@ public class OverlayConfig {
     private boolean dynamicHeight;
     private boolean hideDuplicateCount;
     private boolean contextualColours;
+    private boolean showTimestamp;
     private boolean show;
     private boolean alwaysVisible;
     private WidgetPosition position;
@@ -44,6 +45,7 @@ public class OverlayConfig {
         this.dynamicHeight = false;
         this.hideDuplicateCount = false;
         this.contextualColours = true;
+        this.showTimestamp = false;
         this.show = true;
         this.alwaysVisible = false;
         this.position = WidgetPosition.WIDGET;
@@ -159,6 +161,14 @@ public class OverlayConfig {
 
     public void setContextualColours(boolean contextualColours) {
         this.contextualColours = contextualColours;
+    }
+
+    public boolean isShowTimestamp() {
+        return showTimestamp;
+    }
+
+    public void setShowTimestamp(boolean showTimestamp) {
+        this.showTimestamp = showTimestamp;
     }
 
     public boolean isShow() {

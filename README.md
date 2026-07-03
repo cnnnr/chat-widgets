@@ -41,8 +41,7 @@ Settings are split between the RuneLite config panel (global) and the sidebar pa
 | **Smart Positioning**    | Automatically reposition widgets based on client mode and chatbox state.     |
 | **Collapse Duplicates**  | Merge consecutive identical messages into one with a count.                  |
 | **Show Channel Names**   | Show the channel name prefix for friends and clan chat messages.             |
-| **Show Timestamps**      | Prefix messages with a timestamp.                                            |
-| **Timestamp Format**     | Format string for timestamps (e.g., `[HH:mm:ss]`, `[HH:mm]`).              |
+| **Timestamp Format**     | Format string for timestamps, shared by all widgets (e.g., `[HH:mm:ss]`, `[HH:mm]`). Enable timestamps per widget below. |
 
 #### Message Colours
 
@@ -59,6 +58,7 @@ Each widget is configured independently from the sidebar panel.
 | **Message Types**        | Which message categories this widget displays (Game, Public Chat, Private Chat, Friends Chat, Clan Chat, etc.).                                                                                 |
 | **Always Visible**       | When enabled, the widget is always shown. When disabled, it only appears when the chatbox is minimized.                                                                                         |
 | **Contextual Colours**   | Retain colour formatting from in-game messages (e.g. coloured boss kill messages, music tracks).                                                                                                |
+| **Show Timestamps**      | Prefix this widget's messages with a timestamp (default off). Uses the global **Timestamp Format**.                                                                                             |
 | **Max Messages**         | Maximum number of messages visible in the widget (1–20).                                                                                                                                        |
 | **Fade Out (sec)**       | Seconds before messages start fading out (0 = never fade). Messages fully disappear after 2x this duration.                                                                                     |
 | **Position**             | Widget position mode. `Widget` uses standard overlay positioning. `Below Player` and `Above Player` position the widget relative to your character (works best with fade and low max messages). |

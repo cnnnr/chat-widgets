@@ -42,7 +42,7 @@ public interface ChatWidgetConfig extends Config {
         return true;
     }
 
-    @ConfigItem(keyName = "hidePrivateChat", name = "Hide Private Chat", description = "Hide the default split private chat widget", section = appearanceSection, position = 3)
+    @ConfigItem(keyName = "hidePrivateChat", name = "Hide Default Private Chat", description = "Hide the default split private chat widget", section = appearanceSection, position = 3)
     default boolean hidePrivateChat() {
         return true;
     }
@@ -62,12 +62,7 @@ public interface ChatWidgetConfig extends Config {
         return true;
     }
 
-    @ConfigItem(keyName = "showTimestamp", name = "Show Timestamps", description = "Prefix messages with a timestamp", section = appearanceSection, position = 7)
-    default boolean showTimestamp() {
-        return false;
-    }
-
-    @ConfigItem(keyName = "timestampFormat", name = "Timestamp Format", description = "Format for timestamps (e.g. [HH:mm:ss], [HH:mm])", section = appearanceSection, position = 8)
+    @ConfigItem(keyName = "timestampFormat", name = "Timestamp Format", description = "Format for timestamps, shared by all widgets (e.g. [HH:mm:ss], [HH:mm]). Enable timestamps per widget in the side panel.", section = appearanceSection, position = 8)
     default String timestampFormat() {
         return "[HH:mm]";
     }

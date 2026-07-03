@@ -60,6 +60,8 @@ public class ChatWidgetPlugin extends Plugin {
 
     private static final String CONFIG_GROUP = "chatwidgets";
     private static final String OVERLAY_CONFIGS_KEY = "overlayConfigs";
+    private static final String LEGACY_SHOW_TIMESTAMP_KEY = "showTimestamp";
+    private static final String TIMESTAMP_MIGRATED_KEY = "timestampMigratedToPerWidget";
     private static final int MAX_POOL_SIZE = 200;
 
     private static final Pattern BOSS_KC_PATTERN = Pattern.compile("Your .+ count is:");
@@ -166,6 +168,7 @@ public class ChatWidgetPlugin extends Plugin {
     @Override
     protected void startUp() {
         loadOverlayConfigs();
+        migrateTimestampSetting();
 
         for (OverlayConfig oc : overlayConfigs) {
             addOverlay(oc);
@@ -304,14 +307,34 @@ public class ChatWidgetPlugin extends Plugin {
             }
         }
         // First run — create defaults
-        overlayConfigs.add(OverlayConfig.defaultAllWidget());
         overlayConfigs.add(OverlayConfig.defaultPrivateWidget());
+        overlayConfigs.add(OverlayConfig.defaultAllWidget());
         saveOverlayConfigs();
     }
 
     public void saveOverlayConfigs() {
         String json = gson.toJson(overlayConfigs);
         configManager.setConfiguration(CONFIG_GROUP, OVERLAY_CONFIGS_KEY, json);
+    }
+
+    /**
+     * One-time migration of the former global "Show Timestamps" toggle to the per-widget
+     * {@link OverlayConfig#isShowTimestamp()} setting. The global {@code @ConfigItem} has been
+     * removed, but its previously-persisted value survives in the config store and is read here by
+     * key. If it was enabled, every existing widget inherits it so no one loses their timestamps.
+     * Guarded by a flag so it never re-applies (e.g. after a user turns a widget's toggle off).
+     */
+    private void migrateTimestampSetting() {
+        if ("true".equals(configManager.getConfiguration(CONFIG_GROUP, TIMESTAMP_MIGRATED_KEY))) {
+            return;
+        }
+        if ("true".equals(configManager.getConfiguration(CONFIG_GROUP, LEGACY_SHOW_TIMESTAMP_KEY))) {
+            for (OverlayConfig oc : overlayConfigs) {
+                oc.setShowTimestamp(true);
+            }
+            saveOverlayConfigs();
+        }
+        configManager.setConfiguration(CONFIG_GROUP, TIMESTAMP_MIGRATED_KEY, true);
     }
 
     // --- PM widget visibility ---
