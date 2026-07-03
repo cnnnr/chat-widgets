@@ -67,6 +67,8 @@ public class ChatWidgetPlugin extends Plugin {
     private static final String TIMESTAMP_MIGRATED_KEY = "timestampMigratedToPerWidget";
     private static final String LEGACY_FONT_SIZE_KEY = "fontSize";
     private static final String FONT_SIZE_MIGRATED_KEY = "fontSizeMigratedToPerWidget";
+    private static final String PLUGIN_VERSION = "1.1.1";
+    private static final String LAST_UPDATE_NOTICE_VERSION_KEY = "lastUpdateNoticeVersion";
     private static final int MAX_POOL_SIZE = 200;
 
     private static final Pattern BOSS_KC_PATTERN = Pattern.compile("Your .+ count is:");
@@ -152,6 +154,8 @@ public class ChatWidgetPlugin extends Plugin {
     private NavigationButton navButton;
     private ChatWidgetPanel panel;
     private boolean pmWidgetsHidden = false;
+    private boolean firstRun = false;
+    private boolean updateNoticePending = false;
 
     // Chat command support — track messages that may be updated by Chat Commands plugin
     private final List<PendingChatCommand> pendingCommands = new ArrayList<>();
@@ -175,6 +179,7 @@ public class ChatWidgetPlugin extends Plugin {
         loadOverlayConfigs();
         migrateTimestampSetting();
         migrateFontSizeSetting();
+        armUpdateNotice();
 
         for (OverlayConfig oc : overlayConfigs) {
             addOverlay(oc);
@@ -306,6 +311,7 @@ public class ChatWidgetPlugin extends Plugin {
                 List<OverlayConfig> loaded = gson.fromJson(json, listType);
                 if (loaded != null && !loaded.isEmpty()) {
                     overlayConfigs.addAll(loaded);
+                    firstRun = false;
                     return;
                 }
             } catch (Exception e) {
@@ -313,6 +319,7 @@ public class ChatWidgetPlugin extends Plugin {
             }
         }
         // First run — create defaults
+        firstRun = true;
         overlayConfigs.add(OverlayConfig.defaultPrivateWidget());
         overlayConfigs.add(OverlayConfig.defaultAllWidget());
         saveOverlayConfigs();
@@ -368,6 +375,21 @@ public class ChatWidgetPlugin extends Plugin {
         }
         saveOverlayConfigs();
         configManager.setConfiguration(CONFIG_GROUP, FONT_SIZE_MIGRATED_KEY, true);
+    }
+
+    /**
+     * Arms the one-time "Chat Widgets has been updated" notice when the running {@link #PLUGIN_VERSION}
+     * differs from the last version we announced. Suppressed on a brand-new install (nothing to
+     * "update" from). The notice is actually posted from {@link #onGameTick} once the player is
+     * logged in and the chat is ready.
+     */
+    private void armUpdateNotice() {
+        if (firstRun) {
+            configManager.setConfiguration(CONFIG_GROUP, LAST_UPDATE_NOTICE_VERSION_KEY, PLUGIN_VERSION);
+            return;
+        }
+        String lastNoticeVersion = configManager.getConfiguration(CONFIG_GROUP, LAST_UPDATE_NOTICE_VERSION_KEY);
+        updateNoticePending = !PLUGIN_VERSION.equals(lastNoticeVersion);
     }
 
     // --- PM widget visibility ---
@@ -566,6 +588,14 @@ public class ChatWidgetPlugin extends Plugin {
 
     @Subscribe
     public void onGameTick(GameTick event) {
+        if (updateNoticePending && client.getGameState() == GameState.LOGGED_IN) {
+            updateNoticePending = false;
+            client.addChatMessage(ChatMessageType.CONSOLE, "",
+                    "<col=00b000>Chat Widgets has been updated to v" + PLUGIN_VERSION
+                            + ". New: per-widget Font Size & Timestamps — see the side panel.</col>", null);
+            configManager.setConfiguration(CONFIG_GROUP, LAST_UPDATE_NOTICE_VERSION_KEY, PLUGIN_VERSION);
+        }
+
         if (pendingCommands.isEmpty()) {
             return;
         }
