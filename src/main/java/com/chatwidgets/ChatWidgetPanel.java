@@ -72,7 +72,8 @@ public class ChatWidgetPanel extends PluginPanel {
         supportButton.setMargin(new Insets(1, 6, 1, 6));
         supportButton.addActionListener(e -> LinkBrowser.browse("https://buymeacoffee.com/cnnnr"));
 
-        JButton addButton = new JButton("+ Add");
+        JButton addButton = new JButton("+");
+        addButton.setToolTipText("Add new widget");
         addButton.setFocusPainted(false);
         addButton.addActionListener(e -> plugin.addNewOverlay());
         headerButtons.add(addButton);
