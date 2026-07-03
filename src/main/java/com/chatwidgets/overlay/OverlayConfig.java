@@ -44,10 +44,10 @@ public class OverlayConfig {
         this.widgetWidth = 512;
         this.marginTop = 0;
         this.marginBottom = 0;
-        this.dynamicHeight = false;
+        this.dynamicHeight = true;
         this.hideDuplicateCount = false;
         this.contextualColours = true;
-        this.showTimestamp = false;
+        this.showTimestamp = true;
         this.show = true;
         this.alwaysVisible = false;
         this.fontSize = FontSize.REGULAR;

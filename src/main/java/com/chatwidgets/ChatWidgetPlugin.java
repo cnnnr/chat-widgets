@@ -258,6 +258,30 @@ public class ChatWidgetPlugin extends Plugin {
         }
     }
 
+    /**
+     * Deletes every existing widget and restores the two defaults created on first install
+     * (same set and order as {@link #loadOverlayConfigs()}). Destructive — callers should confirm.
+     */
+    public void resetOverlays() {
+        for (DynamicChatOverlay overlay : overlays) {
+            overlayManager.remove(overlay);
+        }
+        overlays.clear();
+        overlayConfigs.clear();
+
+        overlayConfigs.add(OverlayConfig.defaultPrivateWidget());
+        overlayConfigs.add(OverlayConfig.defaultAllWidget());
+        for (OverlayConfig oc : overlayConfigs) {
+            addOverlay(oc);
+        }
+
+        saveOverlayConfigs();
+        updatePmWidgetVisibility();
+        if (panel != null) {
+            panel.rebuild();
+        }
+    }
+
     public void onOverlayConfigChanged() {
         saveOverlayConfigs();
         updatePmWidgetVisibility();
@@ -592,7 +616,7 @@ public class ChatWidgetPlugin extends Plugin {
             updateNoticePending = false;
             client.addChatMessage(ChatMessageType.CONSOLE, "",
                     "<col=00b000>Chat Widgets has been updated to v" + PLUGIN_VERSION
-                            + ". New: per-widget Font Size & Timestamps — see the side panel.</col>", null);
+                            + ". New: per-widget Font Size & Timestamps -- see the side panel.</col>", null);
             configManager.setConfiguration(CONFIG_GROUP, LAST_UPDATE_NOTICE_VERSION_KEY, PLUGIN_VERSION);
         }
 
