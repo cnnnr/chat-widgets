@@ -58,6 +58,8 @@ import java.util.regex.Pattern;
         "move", "custom", "customize", "resizable", "transparent" })
 public class ChatWidgetPlugin extends Plugin {
 
+    public static final boolean DEBUG = false;
+
     private static final String CONFIG_GROUP = "chatwidgets";
     private static final String OVERLAY_CONFIGS_KEY = "overlayConfigs";
     private static final String LEGACY_SHOW_TIMESTAMP_KEY = "showTimestamp";
@@ -434,6 +436,10 @@ public class ChatWidgetPlugin extends Plugin {
     public void onChatMessage(ChatMessage event) {
         ChatMessageType type = event.getType();
 
+        if (DEBUG) {
+            prependDebugType(event);
+        }
+
         if (!ALL_SUPPORTED_TYPES.contains(type)) {
             return;
         }
@@ -668,6 +674,20 @@ public class ChatWidgetPlugin extends Plugin {
             return "";
         }
         return text.replaceAll("</?col[^>]*>", "");
+    }
+
+    /**
+     * DEBUG aid: prepends the message's {@link ChatMessageType} to the live chatbox line so the
+     * type of every message (including ones the plugin doesn't capture) is visible in-game. Only
+     * the chatbox node is modified; the widget pool reads {@code event.getMessage()}, a separate
+     * copy, so widgets still render the clean message.
+     */
+    private void prependDebugType(ChatMessage event) {
+        MessageNode node = event.getMessageNode();
+        if (node == null) {
+            return;
+        }
+        node.setValue("<col=ff0000>[" + event.getType().name() + "]</col> " + node.getValue());
     }
 
     private void clearMessagesForCategories(MessageCategory... categories) {
