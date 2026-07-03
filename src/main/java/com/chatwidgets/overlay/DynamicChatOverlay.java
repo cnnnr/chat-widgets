@@ -326,15 +326,16 @@ public class DynamicChatOverlay extends Overlay {
      */
     private List<TextSegment> buildInputPreviewSegments(FontMetrics metrics, FontSize fontSize,
             IndexedSprite[] modIcons) {
-        if (!overlayConfig.isShowInputPreview() || client.getGameState() != GameState.LOGGED_IN) {
+        // render() already returned early unless shouldRender() (which requires LOGGED_IN).
+        if (!overlayConfig.isShowInputPreview()) {
             return null;
         }
-        String text = resolveInputText();
+        String typed = client.getVarcStrValue(VarClientID.CHATINPUT);
+        String text = resolveInputText(typed);
         if (text == null || text.isEmpty()) {
             return null;
         }
 
-        String typed = client.getVarcStrValue(VarClientID.CHATINPUT);
         boolean hasTyped = typed != null && !typed.isEmpty();
         Color nameColor = Color.WHITE;
         Color messageColor = hasTyped ? globalConfig.publicColour() : Color.WHITE;
@@ -354,7 +355,7 @@ public class DynamicChatOverlay extends Overlay {
     }
 
     /** The game's formatted chat input line, or a reconstructed fallback if the widget is null. */
-    private String resolveInputText() {
+    private String resolveInputText(String typed) {
         Widget input = client.getWidget(InterfaceID.Chatbox.INPUT);
         if (input != null) {
             String text = input.getText();
@@ -366,7 +367,6 @@ public class DynamicChatOverlay extends Overlay {
         if (local == null || local.getName() == null) {
             return null;
         }
-        String typed = client.getVarcStrValue(VarClientID.CHATINPUT);
         return local.getName() + ": " + (typed != null ? typed : "") + "*";
     }
 }

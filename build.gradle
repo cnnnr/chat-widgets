@@ -29,6 +29,13 @@ dependencies {
 group = 'com.chatwidgets'
 version = '1.2.0'
 
+// Expand ${version} into version.properties so the plugin reads a single source of truth at runtime.
+processResources {
+	filesMatching('version.properties') {
+		expand(version: project.version)
+	}
+}
+
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
 	options.release.set(11)

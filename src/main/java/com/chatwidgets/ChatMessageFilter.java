@@ -54,9 +54,9 @@ public class ChatMessageFilter {
             return false;
         }
 
-        // Normalize like ChatFilterPlugin: the first replace() arg is a non-breaking space (U+00A0).
+        // Normalize like ChatFilterPlugin: non-breaking space (U+00A0) -> regular space.
         String normalized = maybeStripAccents(message
-                .replace(' ', ' ')
+                .replace('\u00A0', ' ')
                 .replace("<lt>", "<")
                 .replace("<gt>", ">"));
 
