@@ -71,7 +71,8 @@ public class ChatWidgetPlugin extends Plugin {
     private static final String TIMESTAMP_MIGRATED_KEY = "timestampMigratedToPerWidget";
     private static final String LEGACY_FONT_SIZE_KEY = "fontSize";
     private static final String FONT_SIZE_MIGRATED_KEY = "fontSizeMigratedToPerWidget";
-    private static final String PLUGIN_VERSION = loadPluginVersion();
+    // Keep in sync with build.gradle 'version' on each release (build=standard ignores build.gradle).
+    private static final String PLUGIN_VERSION = "1.2.0";
     private static final String LAST_UPDATE_NOTICE_VERSION_KEY = "lastUpdateNoticeVersion";
     private static final int MAX_POOL_SIZE = 200;
 
@@ -420,23 +421,6 @@ public class ChatWidgetPlugin extends Plugin {
         configManager.setConfiguration(CONFIG_GROUP, FONT_SIZE_MIGRATED_KEY, true);
     }
 
-    /** Reads the build-injected version from version.properties; null in dev / unfiltered runs. */
-    private static String loadPluginVersion() {
-        try (java.io.InputStream in = ChatWidgetPlugin.class.getResourceAsStream("/version.properties")) {
-            if (in != null) {
-                java.util.Properties props = new java.util.Properties();
-                props.load(in);
-                String v = props.getProperty("version");
-                if (v != null && !v.isEmpty() && !v.contains("$")) {
-                    return v;
-                }
-            }
-        } catch (java.io.IOException e) {
-            // fall through to null — no update notice rather than a wrong one
-        }
-        return null;
-    }
-
     /**
      * Arms the one-time "Chat Widgets has been updated" notice when the running {@link #PLUGIN_VERSION}
      * differs from the last version we announced. Suppressed on a brand-new install (nothing to
@@ -444,9 +428,6 @@ public class ChatWidgetPlugin extends Plugin {
      * logged in and the chat is ready.
      */
     private void armUpdateNotice() {
-        if (PLUGIN_VERSION == null) {
-            return;  // version unavailable (dev build) — don't fire an update notice
-        }
         if (firstRun) {
             configManager.setConfiguration(CONFIG_GROUP, LAST_UPDATE_NOTICE_VERSION_KEY, PLUGIN_VERSION);
             return;
