@@ -13,6 +13,9 @@ import net.runelite.api.IndexedSprite;
 import net.runelite.api.MenuAction;
 import net.runelite.api.Player;
 import net.runelite.api.Point;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.VarClientID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ChatColorConfig;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
@@ -84,13 +87,9 @@ public class DynamicChatOverlay extends Overlay {
             return null;
         }
 
-        List<WidgetMessage> messages = plugin.getMessagesForOverlay(overlayConfig);
-        if (messages.isEmpty()) {
-            return null;
-        }
-
         FontSize fontSize = overlayConfig.getFontSize();
         FontMetrics metrics = ChatRenderUtils.setupGraphics(graphics, fontSize);
+        IndexedSprite[] modIcons = client.getModIcons();
 
         Dimension preferredSize = getPreferredSize();
         int widgetWidth = (preferredSize != null && preferredSize.width > 0)
@@ -111,6 +110,7 @@ public class DynamicChatOverlay extends Overlay {
         long fadeOutThreshold = fadeOutMs + 5000;
         int maxMessages = overlayConfig.getMaxMessages();
 
+        List<WidgetMessage> messages = plugin.getMessagesForOverlay(overlayConfig);
         int messageCount = messages.size();
         int startIndex = Math.max(0, messageCount - maxMessages);
 
@@ -132,7 +132,7 @@ public class DynamicChatOverlay extends Overlay {
                 List<RenderLine> msgLines = ChatRenderUtils.buildMessageLines(msg, metrics,
                         widgetWidth, currentTime, fadeOutMs, wrapText, msgColor,
                         retainContextualColours, hideDuplicateCount,
-                        fontSize, client.getModIcons(),
+                        fontSize, modIcons,
                         overlayConfig.isShowTimestamp(), globalConfig.timestampFormat(),
                         globalConfig.showChannelName(),
                         chatColorConfig);
@@ -145,15 +145,19 @@ public class DynamicChatOverlay extends Overlay {
             }
         }
 
-        if (renderableLines.isEmpty()) {
+        // Live input preview line, drawn at the very bottom of the widget when enabled.
+        List<TextSegment> inputSegments = buildInputPreviewSegments(metrics, fontSize, modIcons);
+
+        if (renderableLines.isEmpty() && inputSegments == null) {
             return null;
         }
 
+        int inputExtra = inputSegments != null ? lineHeight : 0;
         int widgetHeight;
         if (useDynamicHeight) {
-            widgetHeight = renderableLines.size() * lineHeight;
+            widgetHeight = renderableLines.size() * lineHeight + inputExtra;
         } else {
-            widgetHeight = maxMessages * lineHeight;
+            widgetHeight = maxMessages * lineHeight + inputExtra;
         }
 
         int marginTop = overlayConfig.getMarginTop();
@@ -183,31 +187,20 @@ public class DynamicChatOverlay extends Overlay {
         graphics.setClip(0, 0, widgetWidth, widgetHeight + 4);
 
         int y = widgetHeight - marginBottom - metrics.getDescent();
-        IndexedSprite[] modIcons = client.getModIcons();
+
+        if (inputSegments != null) {
+            drawSegments(graphics, inputSegments, 255, y, followPlayer, widgetWidth,
+                    fontSize, metrics, modIcons, drawShadow);
+            y -= lineHeight;
+        }
 
         for (int i = renderableLines.size() - 1; i >= 0; i--) {
             RenderLine line = renderableLines.get(i);
             if (line.alpha <= 0) {
                 continue;
             }
-
-            int lineWidth = calculateLineWidth(line.segments, metrics);
-            int x = followPlayer ? (widgetWidth - lineWidth) / 2 : 0;
-
-            for (TextSegment segment : line.segments) {
-                if (segment.iconId >= 0) {
-                    BufferedImage img = ChatRenderUtils.getModIconImage(segment.iconId, modIcons);
-                    if (img != null) {
-                        x += ChatRenderUtils.drawIcon(graphics, img, fontSize, metrics, x, y);
-                    } else {
-                        x += segment.width;
-                    }
-                } else {
-                    Color segmentColor = segment.color != null ? segment.color : Color.WHITE;
-                    x += ChatRenderUtils.drawText(graphics, segment.text, segmentColor, line.alpha, x, y,
-                            drawShadow, metrics);
-                }
-            }
+            drawSegments(graphics, line.segments, line.alpha, y, followPlayer, widgetWidth,
+                    fontSize, metrics, modIcons, drawShadow);
             y -= lineHeight;
         }
 
@@ -294,5 +287,78 @@ public class DynamicChatOverlay extends Overlay {
             }
         }
         return width;
+    }
+
+    private void drawSegments(Graphics2D graphics, List<TextSegment> segments, int alpha, int y,
+            boolean followPlayer, int widgetWidth, FontSize fontSize, FontMetrics metrics,
+            IndexedSprite[] modIcons, boolean drawShadow) {
+        int lineWidth = calculateLineWidth(segments, metrics);
+        int x = followPlayer ? (widgetWidth - lineWidth) / 2 : 0;
+        for (TextSegment segment : segments) {
+            if (segment.iconId >= 0) {
+                BufferedImage img = ChatRenderUtils.getModIconImage(segment.iconId, modIcons);
+                if (img != null) {
+                    x += ChatRenderUtils.drawIcon(graphics, img, fontSize, metrics, x, y);
+                } else {
+                    x += segment.width;
+                }
+            } else {
+                Color segmentColor = segment.color != null ? segment.color : Color.WHITE;
+                x += ChatRenderUtils.drawText(graphics, segment.text, segmentColor, alpha, x, y,
+                        drawShadow, metrics);
+            }
+        }
+    }
+
+    /**
+     * Builds the live "input preview" line for the bottom of the widget when this widget has it
+     * enabled: the game's own input line (icon + name + typed text + {@code *} / "Press Enter to
+     * Chat..."), with the name white and only an actively-typed message in the configured Public
+     * colour. Returns {@code null} when disabled or there is nothing to show.
+     */
+    private List<TextSegment> buildInputPreviewSegments(FontMetrics metrics, FontSize fontSize,
+            IndexedSprite[] modIcons) {
+        if (!overlayConfig.isShowInputPreview() || client.getGameState() != GameState.LOGGED_IN) {
+            return null;
+        }
+        String text = resolveInputText();
+        if (text == null || text.isEmpty()) {
+            return null;
+        }
+
+        String typed = client.getVarcStrValue(VarClientID.CHATINPUT);
+        boolean hasTyped = typed != null && !typed.isEmpty();
+        Color nameColor = Color.WHITE;
+        Color messageColor = hasTyped ? globalConfig.publicColour() : Color.WHITE;
+
+        List<TextSegment> segments = new ArrayList<>();
+        int colonIdx = text.indexOf(':');
+        if (colonIdx >= 0) {
+            segments.addAll(ChatRenderUtils.parseTextWithColoursAndIcons(
+                    text.substring(0, colonIdx + 1), metrics, modIcons, false, nameColor, fontSize, chatColorConfig));
+            segments.addAll(ChatRenderUtils.parseTextWithColoursAndIcons(
+                    text.substring(colonIdx + 1), metrics, modIcons, false, messageColor, fontSize, chatColorConfig));
+        } else {
+            segments.addAll(ChatRenderUtils.parseTextWithColoursAndIcons(
+                    text, metrics, modIcons, false, messageColor, fontSize, chatColorConfig));
+        }
+        return segments;
+    }
+
+    /** The game's formatted chat input line, or a reconstructed fallback if the widget is null. */
+    private String resolveInputText() {
+        Widget input = client.getWidget(InterfaceID.Chatbox.INPUT);
+        if (input != null) {
+            String text = input.getText();
+            if (text != null && !text.isEmpty()) {
+                return text;
+            }
+        }
+        Player local = client.getLocalPlayer();
+        if (local == null || local.getName() == null) {
+            return null;
+        }
+        String typed = client.getVarcStrValue(VarClientID.CHATINPUT);
+        return local.getName() + ": " + (typed != null ? typed : "") + "*";
     }
 }

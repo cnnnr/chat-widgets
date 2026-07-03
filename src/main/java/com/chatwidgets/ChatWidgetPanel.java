@@ -224,6 +224,10 @@ public class ChatWidgetPanel extends PluginPanel {
             oc.setShowTimestamp(v);
             plugin.onOverlayConfigChanged();
         }));
+        content.add(buildCheckbox("Show Input Preview", oc.isShowInputPreview(), v -> {
+            oc.setShowInputPreview(v);
+            plugin.onOverlayConfigChanged();
+        }));
         content.add(buildComboRow("Font Size", FontSize.values(), oc.getFontSize(), v -> {
             oc.setFontSize(v);
             plugin.onOverlayConfigChanged();

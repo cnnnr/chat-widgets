@@ -30,6 +30,7 @@ public class OverlayConfig {
     private boolean hideDuplicateCount;
     private boolean contextualColours;
     private boolean showTimestamp;
+    private boolean showInputPreview;
     private boolean show;
     private boolean alwaysVisible;
     private FontSize fontSize;
@@ -48,6 +49,7 @@ public class OverlayConfig {
         this.hideDuplicateCount = false;
         this.contextualColours = true;
         this.showTimestamp = true;
+        this.showInputPreview = false;
         this.show = true;
         this.alwaysVisible = false;
         this.fontSize = FontSize.REGULAR;
@@ -69,7 +71,9 @@ public class OverlayConfig {
                 types.addAll(category.getTypes());
             }
         }
-        return createDefault("All Messages", types, false);
+        OverlayConfig config = createDefault("All Messages", types, false);
+        config.showInputPreview = true;
+        return config;
     }
 
     public static OverlayConfig defaultPrivateWidget() {
@@ -172,6 +176,14 @@ public class OverlayConfig {
 
     public void setShowTimestamp(boolean showTimestamp) {
         this.showTimestamp = showTimestamp;
+    }
+
+    public boolean isShowInputPreview() {
+        return showInputPreview;
+    }
+
+    public void setShowInputPreview(boolean showInputPreview) {
+        this.showInputPreview = showInputPreview;
     }
 
     public FontSize getFontSize() {
