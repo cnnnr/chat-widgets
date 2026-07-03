@@ -1,5 +1,6 @@
 package com.chatwidgets;
 
+import com.chatwidgets.model.FontSize;
 import com.chatwidgets.model.MessageCategory;
 import com.chatwidgets.model.WidgetPosition;
 import com.chatwidgets.overlay.OverlayConfig;
@@ -188,6 +189,10 @@ public class ChatWidgetPanel extends PluginPanel {
         }));
         content.add(buildCheckbox("Show Timestamps", oc.isShowTimestamp(), v -> {
             oc.setShowTimestamp(v);
+            plugin.onOverlayConfigChanged();
+        }));
+        content.add(buildComboRow("Font Size", FontSize.values(), oc.getFontSize(), v -> {
+            oc.setFontSize(v);
             plugin.onOverlayConfigChanged();
         }));
         content.add(buildSpinnerRow("Max Messages", oc.getMaxMessages(), 1, 20, v -> {

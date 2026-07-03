@@ -1,5 +1,6 @@
 package com.chatwidgets;
 
+import com.chatwidgets.model.FontSize;
 import com.chatwidgets.model.MessageCategory;
 import com.chatwidgets.model.MessageMergeRule;
 import com.chatwidgets.model.WidgetMessage;
@@ -64,6 +65,8 @@ public class ChatWidgetPlugin extends Plugin {
     private static final String OVERLAY_CONFIGS_KEY = "overlayConfigs";
     private static final String LEGACY_SHOW_TIMESTAMP_KEY = "showTimestamp";
     private static final String TIMESTAMP_MIGRATED_KEY = "timestampMigratedToPerWidget";
+    private static final String LEGACY_FONT_SIZE_KEY = "fontSize";
+    private static final String FONT_SIZE_MIGRATED_KEY = "fontSizeMigratedToPerWidget";
     private static final int MAX_POOL_SIZE = 200;
 
     private static final Pattern BOSS_KC_PATTERN = Pattern.compile("Your .+ count is:");
@@ -171,6 +174,7 @@ public class ChatWidgetPlugin extends Plugin {
     protected void startUp() {
         loadOverlayConfigs();
         migrateTimestampSetting();
+        migrateFontSizeSetting();
 
         for (OverlayConfig oc : overlayConfigs) {
             addOverlay(oc);
@@ -337,6 +341,33 @@ public class ChatWidgetPlugin extends Plugin {
             saveOverlayConfigs();
         }
         configManager.setConfiguration(CONFIG_GROUP, TIMESTAMP_MIGRATED_KEY, true);
+    }
+
+    /**
+     * One-time migration of the former global "Font Size" setting to the per-widget
+     * {@link OverlayConfig#getFontSize()} setting. Reads the orphaned global value (persisted by
+     * enum name) directly by key and applies it to every existing widget. Unlike the timestamp
+     * migration, this always writes an effective value (defaulting to {@link FontSize#REGULAR}) so
+     * widgets deserialized before the field existed are normalized off null. Guarded so it runs once.
+     */
+    private void migrateFontSizeSetting() {
+        if ("true".equals(configManager.getConfiguration(CONFIG_GROUP, FONT_SIZE_MIGRATED_KEY))) {
+            return;
+        }
+        FontSize legacy = FontSize.REGULAR;
+        String stored = configManager.getConfiguration(CONFIG_GROUP, LEGACY_FONT_SIZE_KEY);
+        if (stored != null && !stored.isEmpty()) {
+            try {
+                legacy = FontSize.valueOf(stored);
+            } catch (IllegalArgumentException ignored) {
+                // Unrecognized value — keep the default.
+            }
+        }
+        for (OverlayConfig oc : overlayConfigs) {
+            oc.setFontSize(legacy);
+        }
+        saveOverlayConfigs();
+        configManager.setConfiguration(CONFIG_GROUP, FONT_SIZE_MIGRATED_KEY, true);
     }
 
     // --- PM widget visibility ---

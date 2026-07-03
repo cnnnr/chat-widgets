@@ -1,6 +1,5 @@
 package com.chatwidgets;
 
-import com.chatwidgets.model.FontSize;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -26,11 +25,6 @@ public interface ChatWidgetConfig extends Config {
 
     @ConfigSection(name = "Message Colours", description = "Text colour per message category", position = 1, closedByDefault = false)
     String coloursSection = "colours";
-
-    @ConfigItem(keyName = "fontSize", name = "Font Size", description = "Font size for all messages", section = appearanceSection, position = 0)
-    default FontSize fontSize() {
-        return FontSize.REGULAR;
-    }
 
     @ConfigItem(keyName = "textShadow", name = "Text Shadow", description = "Draw shadow behind text", section = appearanceSection, position = 1)
     default boolean textShadow() {

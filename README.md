@@ -34,7 +34,6 @@ Settings are split between the RuneLite config panel (global) and the sidebar pa
 | Setting                  | Description                                                                  |
 | :----------------------- | :--------------------------------------------------------------------------- |
 | **Hide Side Panel**      | Hide the Chat Widgets panel from the sidebar.                                |
-| **Font Size**            | Font size for all messages (Small, Regular).                                 |
 | **Text Shadow**          | Draw a shadow behind text for better readability.                            |
 | **Wrap Text**            | Wrap long messages to multiple lines instead of truncating.                  |
 | **Hide Private Chat**    | Hide the default split private chat widget.                                  |
@@ -59,6 +58,7 @@ Each widget is configured independently from the sidebar panel.
 | **Always Visible**       | When enabled, the widget is always shown. When disabled, it only appears when the chatbox is minimized.                                                                                         |
 | **Contextual Colours**   | Retain colour formatting from in-game messages (e.g. coloured boss kill messages, music tracks).                                                                                                |
 | **Show Timestamps**      | Prefix this widget's messages with a timestamp (default off). Uses the global **Timestamp Format**.                                                                                             |
+| **Font Size**            | Font size for this widget's messages (Regular, Small). Default Regular.                                                                                                                         |
 | **Max Messages**         | Maximum number of messages visible in the widget (1–20).                                                                                                                                        |
 | **Fade Out (sec)**       | Seconds before messages start fading out (0 = never fade). Messages fully disappear after 2x this duration.                                                                                     |
 | **Position**             | Widget position mode. `Widget` uses standard overlay positioning. `Below Player` and `Above Player` position the widget relative to your character (works best with fade and low max messages). |

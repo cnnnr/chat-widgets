@@ -89,7 +89,7 @@ public class DynamicChatOverlay extends Overlay {
             return null;
         }
 
-        FontSize fontSize = globalConfig.fontSize();
+        FontSize fontSize = overlayConfig.getFontSize();
         FontMetrics metrics = ChatRenderUtils.setupGraphics(graphics, fontSize);
 
         Dimension preferredSize = getPreferredSize();

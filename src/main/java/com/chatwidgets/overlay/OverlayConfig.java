@@ -1,5 +1,6 @@
 package com.chatwidgets.overlay;
 
+import com.chatwidgets.model.FontSize;
 import com.chatwidgets.model.MessageCategory;
 import com.chatwidgets.model.WidgetPosition;
 import net.runelite.api.ChatMessageType;
@@ -31,6 +32,7 @@ public class OverlayConfig {
     private boolean showTimestamp;
     private boolean show;
     private boolean alwaysVisible;
+    private FontSize fontSize;
     private WidgetPosition position;
 
     public OverlayConfig() {
@@ -48,6 +50,7 @@ public class OverlayConfig {
         this.showTimestamp = false;
         this.show = true;
         this.alwaysVisible = false;
+        this.fontSize = FontSize.REGULAR;
         this.position = WidgetPosition.WIDGET;
     }
 
@@ -169,6 +172,15 @@ public class OverlayConfig {
 
     public void setShowTimestamp(boolean showTimestamp) {
         this.showTimestamp = showTimestamp;
+    }
+
+    public FontSize getFontSize() {
+        // Widgets serialized before this field existed deserialize fontSize as null.
+        return fontSize != null ? fontSize : FontSize.REGULAR;
+    }
+
+    public void setFontSize(FontSize fontSize) {
+        this.fontSize = fontSize;
     }
 
     public boolean isShow() {
