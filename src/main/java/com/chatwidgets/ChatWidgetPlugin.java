@@ -37,6 +37,7 @@ import net.runelite.client.plugins.chatfilter.ChatFilterConfig;
 import net.runelite.client.plugins.chatfilter.ChatFilterPlugin;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.components.colorpicker.ColorPickerManager;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.util.ImageUtil;
@@ -150,6 +151,9 @@ public class ChatWidgetPlugin extends Plugin {
     @Inject
     private PluginManager pluginManager;
 
+    @Inject
+    private ColorPickerManager colorPickerManager;
+
     // Shared message pool
     private final CopyOnWriteArrayList<WidgetMessage> messages = new CopyOnWriteArrayList<>();
 
@@ -237,6 +241,10 @@ public class ChatWidgetPlugin extends Plugin {
 
     public List<OverlayConfig> getOverlayConfigs() {
         return overlayConfigs;
+    }
+
+    public ColorPickerManager getColorPickerManager() {
+        return colorPickerManager;
     }
 
     public void addNewOverlay() {

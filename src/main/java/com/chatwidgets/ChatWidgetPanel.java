@@ -7,6 +7,7 @@ import com.chatwidgets.overlay.OverlayConfig;
 import net.runelite.api.ChatMessageType;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.ui.components.colorpicker.RuneliteColorPicker;
 import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.LinkBrowser;
 
@@ -220,6 +221,7 @@ public class ChatWidgetPanel extends PluginPanel {
             oc.setContextualColours(v);
             plugin.onOverlayConfigChanged();
         }));
+        content.add(buildColorRow("Background", oc::getBackgroundColour, oc::setBackgroundColour));
         content.add(buildCheckbox("Show Timestamps", oc.isShowTimestamp(), v -> {
             oc.setShowTimestamp(v);
             plugin.onOverlayConfigChanged();
@@ -388,6 +390,37 @@ public class ChatWidgetPanel extends PluginPanel {
         Component strut = Box.createVerticalStrut(height);
         ((JComponent) strut).setAlignmentX(Component.LEFT_ALIGNMENT);
         return strut;
+    }
+
+    private JPanel buildColorRow(String label, java.util.function.Supplier<Color> getter,
+            java.util.function.Consumer<Color> setter) {
+        JPanel row = new JPanel(new BorderLayout());
+        row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel lbl = new JLabel(label);
+        lbl.setForeground(Color.WHITE);
+        row.add(lbl, BorderLayout.CENTER);
+
+        JButton swatch = new JButton();
+        swatch.setPreferredSize(new Dimension(90, 24));
+        swatch.setFocusPainted(false);
+        swatch.setBackground(getter.get());
+        swatch.addActionListener(e -> {
+            RuneliteColorPicker picker = plugin.getColorPickerManager().create(
+                    SwingUtilities.getWindowAncestor(this), getter.get(), label, false);
+            picker.setLocationRelativeTo(this);
+            picker.setOnColorChange(c -> {
+                setter.accept(c);
+                swatch.setBackground(c);
+            });
+            picker.setOnClose(c -> plugin.onOverlayConfigChanged());
+            picker.setVisible(true);
+        });
+        row.add(swatch, BorderLayout.EAST);
+
+        return row;
     }
 
     private JPanel buildCheckbox(String label, boolean value, java.util.function.Consumer<Boolean> onChange) {

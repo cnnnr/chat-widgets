@@ -5,6 +5,7 @@ import com.chatwidgets.model.MessageCategory;
 import com.chatwidgets.model.WidgetPosition;
 import net.runelite.api.ChatMessageType;
 
+import java.awt.Color;
 import java.util.EnumSet;
 import java.util.Set;
 import java.util.UUID;
@@ -18,6 +19,9 @@ import java.util.UUID;
  * via {@link #defaultAllWidget()} and {@link #defaultPrivateWidget()}.
  */
 public class OverlayConfig {
+    /** Fully-transparent background — the "no background" / disabled state. */
+    private static final Color TRANSPARENT = new Color(0, 0, 0, 0);
+
     private String id;
     private String name;
     private Set<ChatMessageType> messageTypes;
@@ -34,6 +38,7 @@ public class OverlayConfig {
     private boolean show;
     private boolean alwaysVisible;
     private FontSize fontSize;
+    private Color backgroundColour;
     private WidgetPosition position;
 
     public OverlayConfig() {
@@ -53,6 +58,7 @@ public class OverlayConfig {
         this.show = true;
         this.alwaysVisible = false;
         this.fontSize = FontSize.REGULAR;
+        this.backgroundColour = TRANSPARENT;
         this.position = WidgetPosition.WIDGET;
     }
 
@@ -193,6 +199,15 @@ public class OverlayConfig {
 
     public void setFontSize(FontSize fontSize) {
         this.fontSize = fontSize;
+    }
+
+    public Color getBackgroundColour() {
+        // Widgets serialized before this field existed deserialize backgroundColour as null.
+        return backgroundColour != null ? backgroundColour : TRANSPARENT;
+    }
+
+    public void setBackgroundColour(Color backgroundColour) {
+        this.backgroundColour = backgroundColour;
     }
 
     public boolean isShow() {

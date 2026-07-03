@@ -152,6 +152,9 @@ public class DynamicChatOverlay extends Overlay {
             return null;
         }
 
+        Color background = overlayConfig.getBackgroundColour();
+        int bgPadding = background.getAlpha() > 0 ? 3 : 0;
+
         int inputExtra = inputSegments != null ? lineHeight : 0;
         int widgetHeight;
         if (useDynamicHeight) {
@@ -163,7 +166,7 @@ public class DynamicChatOverlay extends Overlay {
         int marginTop = overlayConfig.getMarginTop();
         int marginBottom = overlayConfig.getMarginBottom();
 
-        widgetHeight += marginTop + marginBottom;
+        widgetHeight += marginTop + marginBottom + bgPadding * 2;
 
         if (followPlayer) {
             Player localPlayer = client.getLocalPlayer();
@@ -186,10 +189,15 @@ public class DynamicChatOverlay extends Overlay {
         Shape originalClip = graphics.getClip();
         graphics.setClip(0, 0, widgetWidth, widgetHeight + 4);
 
-        int y = widgetHeight - marginBottom - metrics.getDescent();
+        if (background.getAlpha() > 0) {
+            graphics.setColor(background);
+            graphics.fillRect(0, 0, widgetWidth, widgetHeight);
+        }
+
+        int y = widgetHeight - bgPadding - marginBottom - metrics.getDescent();
 
         if (inputSegments != null) {
-            drawSegments(graphics, inputSegments, 255, y, followPlayer, widgetWidth,
+            drawSegments(graphics, inputSegments, 255, y, followPlayer, widgetWidth, bgPadding,
                     fontSize, metrics, modIcons, drawShadow);
             y -= lineHeight;
         }
@@ -199,7 +207,7 @@ public class DynamicChatOverlay extends Overlay {
             if (line.alpha <= 0) {
                 continue;
             }
-            drawSegments(graphics, line.segments, line.alpha, y, followPlayer, widgetWidth,
+            drawSegments(graphics, line.segments, line.alpha, y, followPlayer, widgetWidth, bgPadding,
                     fontSize, metrics, modIcons, drawShadow);
             y -= lineHeight;
         }
@@ -290,10 +298,10 @@ public class DynamicChatOverlay extends Overlay {
     }
 
     private void drawSegments(Graphics2D graphics, List<TextSegment> segments, int alpha, int y,
-            boolean followPlayer, int widgetWidth, FontSize fontSize, FontMetrics metrics,
+            boolean followPlayer, int widgetWidth, int xPad, FontSize fontSize, FontMetrics metrics,
             IndexedSprite[] modIcons, boolean drawShadow) {
         int lineWidth = calculateLineWidth(segments, metrics);
-        int x = followPlayer ? (widgetWidth - lineWidth) / 2 : 0;
+        int x = followPlayer ? xPad + (widgetWidth - xPad * 2 - lineWidth) / 2 : xPad;
         for (TextSegment segment : segments) {
             if (segment.iconId >= 0) {
                 BufferedImage img = ChatRenderUtils.getModIconImage(segment.iconId, modIcons);
