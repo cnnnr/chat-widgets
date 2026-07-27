@@ -43,7 +43,7 @@ task run(type: JavaExec) {
 	description = 'Run the RuneLite client with the plugin'
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = 'com.chatwidgets.ChatWidgetPluginTest'
-	jvmArgs '-ea'
+	jvmArgs '-ea', '--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED'
 	args '--developer-mode'
 }
 
