@@ -671,20 +671,10 @@ public class ChatWidgetPlugin extends Plugin {
             newMsg = WidgetMessage.gameMessage(message, System.currentTimeMillis(), type, isBossKc);
         }
 
-        // Collapse duplicates (except login notifications)
+        // Collapse duplicates (except login notifications). newMsg isn't in the pool yet, so pass
+        // skipIndex -1 and base count 1 — the fold adds the matched entry's own count on top.
         if (config.collapseDuplicates() && type != ChatMessageType.LOGINLOGOUTNOTIFICATION) {
-            String strippedNew = stripTags(message);
-            for (int i = messages.size() - 1; i >= 0; i--) {
-                WidgetMessage existing = messages.get(i);
-                String existingSender = existing.getSender();
-                String newSender = newMsg.getSender();
-                if (stripTags(existing.getMessage()).equals(strippedNew)
-                        && (existingSender == null ? newSender == null : existingSender.equals(newSender))) {
-                    newMsg.setCount(existing.getCount() + 1);
-                    messages.remove(i);
-                    break;
-                }
-            }
+            newMsg.setCount(collapseDuplicate(messages, stripTags(message), newMsg.getSender(), 1, -1));
         }
 
         messages.add(newMsg);
@@ -763,24 +753,11 @@ public class ChatWidgetPlugin extends Plugin {
         messages.set(idx, updated);
 
         // The shortcut-vs-<img> (or command-vs-result) mismatch at capture time can hide a
-        // duplicate that only matches once the body reaches its final form here. count values
-        // already include their own occurrences, so combine with no +1 — matching onChatMessage.
+        // duplicate that only matches once the body reaches its final form here. updated is already
+        // in the pool, so skip its own slot and fold on top of the count it already carries.
         if (config.collapseDuplicates() && updated.getType() != ChatMessageType.LOGINLOGOUTNOTIFICATION) {
-            String strippedNew = stripTags(newBody);
-            String newSender = updated.getSender();
-            for (int i = messages.size() - 1; i >= 0; i--) {
-                if (i == idx) {
-                    continue;
-                }
-                WidgetMessage other = messages.get(i);
-                String otherSender = other.getSender();
-                if (stripTags(other.getMessage()).equals(strippedNew)
-                        && (otherSender == null ? newSender == null : otherSender.equals(newSender))) {
-                    updated.setCount(updated.getCount() + other.getCount());
-                    messages.remove(i);
-                    break;
-                }
-            }
+            updated.setCount(collapseDuplicate(
+                    messages, stripTags(newBody), updated.getSender(), updated.getCount(), idx));
         }
     }
 
@@ -929,11 +906,42 @@ public class ChatWidgetPlugin extends Plugin {
         return null;
     }
 
-    private String stripTags(String text) {
+    private static String stripTags(String text) {
         if (text == null) {
             return "";
         }
         return text.replaceAll("</?col[^>]*>", "");
+    }
+
+    /**
+     * Folds a duplicate message into a target's slot: scans {@code pool} for an entry with the same
+     * colour-stripped body and sender, and on a hit removes it and returns the combined count.
+     *
+     * @param pool         the shared message pool, mutated in place (the matched entry is removed)
+     * @param strippedBody the target's body with colour tags stripped ({@link #stripTags})
+     * @param sender       the target's sender ({@code null} for game messages)
+     * @param baseCount    the count the target carries before folding — 1 for a freshly captured
+     *                     message, or its preserved count when rebuilt after a node rewrite
+     * @param skipIndex    the target's own index when it already lives in {@code pool} (so it isn't
+     *                     matched against itself), or -1 when it has not been added yet
+     * @return {@code baseCount} plus the matched entry's count, or {@code baseCount} unchanged when
+     *         no duplicate is found (pool left untouched)
+     */
+    static int collapseDuplicate(List<WidgetMessage> pool, String strippedBody, String sender,
+            int baseCount, int skipIndex) {
+        for (int i = pool.size() - 1; i >= 0; i--) {
+            if (i == skipIndex) {
+                continue;
+            }
+            WidgetMessage other = pool.get(i);
+            String otherSender = other.getSender();
+            if (stripTags(other.getMessage()).equals(strippedBody)
+                    && (otherSender == null ? sender == null : otherSender.equals(sender))) {
+                pool.remove(i);
+                return baseCount + other.getCount();
+            }
+        }
+        return baseCount;
     }
 
     /**
