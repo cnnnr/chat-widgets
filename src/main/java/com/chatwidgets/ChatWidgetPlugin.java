@@ -35,6 +35,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.chatfilter.ChatFilterConfig;
 import net.runelite.client.plugins.chatfilter.ChatFilterPlugin;
+import net.runelite.client.plugins.emojis.EmojiPlugin;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.components.colorpicker.ColorPickerManager;
@@ -51,6 +52,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
@@ -180,6 +182,7 @@ public class ChatWidgetPlugin extends Plugin {
     // Mirrors the Chat Filter plugin's word/regex lists when "Use Chat Filter" is enabled
     private final ChatMessageFilter chatMessageFilter = new ChatMessageFilter();
     private Plugin chatFilterPlugin;
+    private Plugin emojiPlugin;
 
     // Dynamic overlays
     private final List<OverlayConfig> overlayConfigs = new ArrayList<>();
@@ -191,34 +194,44 @@ public class ChatWidgetPlugin extends Plugin {
     private boolean firstRun = false;
     private boolean updateNoticePending = false;
 
-    // Chat command support — track messages that may be updated by Chat Commands plugin
-    private final List<PendingChatCommand> pendingCommands = new ArrayList<>();
+    // Messages whose backing MessageNode may be rewritten in place by another plugin after we
+    // capture it — Chat Commands (command results) or the RuneLite Emojis plugin (<img=N> tags).
+    // Drained on subsequent game ticks by reconcilePendingUpdates().
+    private final List<PendingMessageUpdate> pendingUpdates = new ArrayList<>();
 
-    // Emoji support — one-shot watch list drained on the next tick to pick up <img=N> tags the
-    // RuneLite Emojis plugin writes to the message node during chat event dispatch.
-    private final List<PendingEmojiMessage> pendingEmojiMessages = new ArrayList<>();
+    // The Chat Commands plugin rewrites a command's result into the RuneLite-format message; it can
+    // take several ticks to arrive, so command entries linger until then.
+    private static final int COMMAND_UPDATE_TICKS = 10;
+    private static final Function<MessageNode, String> COMMAND_VALUE = MessageNode::getRuneLiteFormatMessage;
 
-    private static class PendingChatCommand {
+    // The Emojis plugin converts shortcuts to <img=N> synchronously within the same dispatch, so a
+    // single follow-up tick suffices before the entry is dropped.
+    private static final int EMOJI_UPDATE_TICKS = 1;
+    private static final Function<MessageNode, String> EMOJI_VALUE = node -> {
+        String value = node.getValue();
+        return value == null ? null : value.trim();
+    };
+
+    /**
+     * A pooled message whose backing {@link MessageNode} may be rewritten in place by another
+     * plugin after capture. Reconciled on subsequent ticks by {@link #reconcilePendingUpdates()}:
+     * once {@code valueAccessor} reports a value different from {@code originalText}, the pooled
+     * message is rebuilt with it; the entry is dropped when it updates or after its tick budget.
+     */
+    private static class PendingMessageUpdate {
         final WidgetMessage widgetMessage;
         final MessageNode messageNode;
+        final Function<MessageNode, String> valueAccessor;
         final String originalText;
         int ticksRemaining;
 
-        PendingChatCommand(WidgetMessage widgetMessage, MessageNode messageNode, String originalText) {
+        PendingMessageUpdate(WidgetMessage widgetMessage, MessageNode messageNode,
+                Function<MessageNode, String> valueAccessor, String originalText, int ticksRemaining) {
             this.widgetMessage = widgetMessage;
             this.messageNode = messageNode;
+            this.valueAccessor = valueAccessor;
             this.originalText = originalText;
-            this.ticksRemaining = 10;
-        }
-    }
-
-    private static class PendingEmojiMessage {
-        final WidgetMessage widgetMessage;
-        final MessageNode messageNode;
-
-        PendingEmojiMessage(WidgetMessage widgetMessage, MessageNode messageNode) {
-            this.widgetMessage = widgetMessage;
-            this.messageNode = messageNode;
+            this.ticksRemaining = ticksRemaining;
         }
     }
 
@@ -260,8 +273,7 @@ public class ChatWidgetPlugin extends Plugin {
             overlayManager.remove(overlay);
         }
         overlays.clear();
-        pendingCommands.clear();
-        pendingEmojiMessages.clear();
+        pendingUpdates.clear();
 
         if (pmWidgetsHidden) {
             setPmWidgetsHidden(false);
@@ -583,11 +595,16 @@ public class ChatWidgetPlugin extends Plugin {
 
         // Emoji support: for emoji-eligible types that aren't chat commands, seed the stored body
         // from the message node (mutated in place by the RuneLite Emojis plugin to insert <img=N>)
-        // rather than the immutable pre-plugin event message. Commands (message.startsWith("!"))
-        // stay on the pendingCommands path below. Reconciled on the next tick in onGameTick, which
-        // catches the case where Emojis is registered after us and hasn't converted yet at capture.
+        // rather than the immutable pre-plugin event message. Gated on the Emojis plugin being
+        // enabled so we only switch capture source when there's a reason to — otherwise an unrelated
+        // plugin's in-place node edit (e.g. Chat Filter censoring) could leak into what we store.
+        // Commands (message.startsWith("!")) stay on the command path below. Reconciled on the next
+        // tick in onGameTick, catching the case where Emojis is registered after us and hasn't
+        // converted yet at capture.
         MessageNode messageNode = event.getMessageNode();
-        boolean emojiWatched = EMOJI_WATCHED_TYPES.contains(type) && !message.startsWith("!");
+        boolean emojiWatched = EMOJI_WATCHED_TYPES.contains(type)
+                && !message.startsWith("!")
+                && isEmojiPluginEnabled();
         if (emojiWatched && messageNode != null) {
             String nodeValue = messageNode.getValue();
             if (nodeValue != null && !nodeValue.trim().isEmpty()) {
@@ -679,9 +696,11 @@ public class ChatWidgetPlugin extends Plugin {
         // Track potential chat commands for delayed updates by Chat Commands plugin; otherwise
         // watch emoji-eligible messages for the Emojis plugin's next-tick <img=N> conversion.
         if (messageNode != null && message.startsWith("!")) {
-            pendingCommands.add(new PendingChatCommand(newMsg, messageNode, message));
+            pendingUpdates.add(new PendingMessageUpdate(
+                    newMsg, messageNode, COMMAND_VALUE, message, COMMAND_UPDATE_TICKS));
         } else if (emojiWatched && messageNode != null) {
-            pendingEmojiMessages.add(new PendingEmojiMessage(newMsg, messageNode));
+            pendingUpdates.add(new PendingMessageUpdate(
+                    newMsg, messageNode, EMOJI_VALUE, message, EMOJI_UPDATE_TICKS));
         }
     }
 
@@ -695,78 +714,74 @@ public class ChatWidgetPlugin extends Plugin {
             configManager.setConfiguration(CONFIG_GROUP, LAST_UPDATE_NOTICE_VERSION_KEY, PLUGIN_VERSION);
         }
 
-        reconcilePendingEmojiMessages();
+        reconcilePendingUpdates();
+    }
 
-        if (pendingCommands.isEmpty()) {
-            return;
-        }
-
-        for (int i = pendingCommands.size() - 1; i >= 0; i--) {
-            PendingChatCommand pending = pendingCommands.get(i);
+    /**
+     * Drains {@link #pendingUpdates}, rebuilding any pooled message whose backing node has been
+     * rewritten since capture (Chat Commands results, Emojis {@code <img=N>} tags). Each entry is
+     * dropped once its value changes and the message is rebuilt, or once its tick budget runs out.
+     */
+    private void reconcilePendingUpdates() {
+        for (int i = pendingUpdates.size() - 1; i >= 0; i--) {
+            PendingMessageUpdate pending = pendingUpdates.get(i);
             pending.ticksRemaining--;
 
-            String currentValue = pending.messageNode.getRuneLiteFormatMessage();
+            String currentValue = pending.valueAccessor.apply(pending.messageNode);
             if (currentValue != null && !currentValue.equals(pending.originalText)) {
-                int idx = messages.indexOf(pending.widgetMessage);
-                if (idx >= 0) {
-                    WidgetMessage old = pending.widgetMessage;
-                    WidgetMessage updated;
-                    if (old.getSender() != null) {
-                        updated = WidgetMessage.senderMessage(
-                                old.getSender(), old.getChannelName(), currentValue,
-                                old.getTimestamp(), old.getType(), old.isOutgoing());
-                    } else {
-                        updated = WidgetMessage.gameMessage(
-                                currentValue, old.getTimestamp(), old.getType(), old.isBossKc());
-                    }
-                    if (old.getCount() > 1) {
-                        updated.setCount(old.getCount());
-                    }
-                    messages.set(idx, updated);
-                }
-                pendingCommands.remove(i);
+                rebuildPooledMessage(pending.widgetMessage, currentValue);
+                pendingUpdates.remove(i);
             } else if (pending.ticksRemaining <= 0) {
-                pendingCommands.remove(i);
+                pendingUpdates.remove(i);
             }
         }
     }
 
     /**
-     * Drains the one-shot emoji watch list, rebuilding any captured message whose node value has
-     * changed since capture. The RuneLite Emojis plugin converts shortcuts (e.g. {@code :)}) to
-     * {@code <img=N>} by mutating the {@link MessageNode} during chat event dispatch. When it is
-     * registered after us, the node is still unconverted when we capture in {@link #onChatMessage};
-     * because that conversion is synchronous within the dispatch, the node holds its final value by
-     * the next game tick, so a single follow-up tick suffices. Every entry is dropped after this
-     * pass regardless — the emoji path is the sole writer of any body it watches.
+     * Replaces the pooled {@code old} message with a copy carrying {@code newBody}, preserving its
+     * kind (sender vs game), count, and metadata. Re-applies duplicate collapsing afterwards: the
+     * body only reaches its final form here (a command result, or an Emojis {@code <img=N>} tag),
+     * so a duplicate the capture-time text couldn't match may only surface post-rewrite. No-op if
+     * {@code old} has already been evicted from the pool.
      */
-    private void reconcilePendingEmojiMessages() {
-        if (pendingEmojiMessages.isEmpty()) {
+    private void rebuildPooledMessage(WidgetMessage old, String newBody) {
+        int idx = messages.indexOf(old);
+        if (idx < 0) {
             return;
         }
-        for (PendingEmojiMessage pending : pendingEmojiMessages) {
-            String currentValue = pending.messageNode.getValue();
-            if (currentValue == null) {
-                continue;
-            }
-            currentValue = currentValue.trim();
-            WidgetMessage old = pending.widgetMessage;
-            if (currentValue.equals(old.getMessage())) {
-                continue;
-            }
-            int idx = messages.indexOf(old);
-            if (idx < 0) {
-                continue;
-            }
-            WidgetMessage updated = WidgetMessage.senderMessage(
-                    old.getSender(), old.getChannelName(), currentValue,
+        WidgetMessage updated;
+        if (old.getSender() != null) {
+            updated = WidgetMessage.senderMessage(
+                    old.getSender(), old.getChannelName(), newBody,
                     old.getTimestamp(), old.getType(), old.isOutgoing());
-            if (old.getCount() > 1) {
-                updated.setCount(old.getCount());
-            }
-            messages.set(idx, updated);
+        } else {
+            updated = WidgetMessage.gameMessage(newBody, old.getTimestamp(), old.getType(), old.isBossKc());
         }
-        pendingEmojiMessages.clear();
+        if (old.getCount() > 1) {
+            updated.setCount(old.getCount());
+        }
+        messages.set(idx, updated);
+
+        // The shortcut-vs-<img> (or command-vs-result) mismatch at capture time can hide a
+        // duplicate that only matches once the body reaches its final form here. count values
+        // already include their own occurrences, so combine with no +1 — matching onChatMessage.
+        if (config.collapseDuplicates() && updated.getType() != ChatMessageType.LOGINLOGOUTNOTIFICATION) {
+            String strippedNew = stripTags(newBody);
+            String newSender = updated.getSender();
+            for (int i = messages.size() - 1; i >= 0; i--) {
+                if (i == idx) {
+                    continue;
+                }
+                WidgetMessage other = messages.get(i);
+                String otherSender = other.getSender();
+                if (stripTags(other.getMessage()).equals(strippedNew)
+                        && (otherSender == null ? newSender == null : otherSender.equals(newSender))) {
+                    updated.setCount(updated.getCount() + other.getCount());
+                    messages.remove(i);
+                    break;
+                }
+            }
+        }
     }
 
     @Subscribe
@@ -811,6 +826,24 @@ public class ChatWidgetPlugin extends Plugin {
             }
         }
         return chatFilterPlugin != null && pluginManager.isPluginEnabled(chatFilterPlugin);
+    }
+
+    /**
+     * True when RuneLite's Emojis plugin is currently enabled. Only then do we seed captured bodies
+     * from the live message node (and watch for its {@code <img=N>} rewrite); otherwise we keep the
+     * raw event message so an unrelated plugin's in-place node edit (e.g. Chat Filter censoring)
+     * can't silently change what we store and render.
+     */
+    private boolean isEmojiPluginEnabled() {
+        if (emojiPlugin == null) {
+            for (Plugin p : pluginManager.getPlugins()) {
+                if (p instanceof EmojiPlugin) {
+                    emojiPlugin = p;
+                    break;
+                }
+            }
+        }
+        return emojiPlugin != null && pluginManager.isPluginEnabled(emojiPlugin);
     }
 
     // --- Message access for overlays ---
