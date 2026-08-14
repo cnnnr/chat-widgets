@@ -1,8 +1,13 @@
 # Chat Widgets
 
-**Version 1.2.0**
+**Version 1.2.1**
 
 Create custom chat widgets that display any combination of message types. Each widget is independently configurable with its own message filters, positioning, fade behaviour, and more. Manage widgets from the sidebar panel — add, remove, reorder, and configure as many as you need.
+
+## What's New
+
+- New per-widget settings: Margin Left, Margin Right
+- Emoji support
 
 ## Examples
 
@@ -68,6 +73,8 @@ Each widget is configured independently from the sidebar panel.
 | **Dynamic Height**       | Widget height adjusts based on message count rather than using fixed height. Disable this if you notice a subtle jitter effect when Fade Out is enabled.                                        |
 | **Margin Top**           | Extra spacing above the widget (0–200).                                                                                                                                                         |
 | **Margin Bottom**        | Extra spacing below the widget (0–200).                                                                                                                                                         |
+| **Margin Left**          | Extra spacing to the left of the widget (0–200).                                                                                                                                                |
+| **Margin Right**         | Extra spacing to the right of the widget (0–200).                                                                                                                                               |
 
 ## Tips
 

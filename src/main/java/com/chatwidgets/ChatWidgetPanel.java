@@ -259,6 +259,14 @@ public class ChatWidgetPanel extends PluginPanel {
             oc.setMarginBottom(v);
             plugin.onOverlayConfigChanged();
         }));
+        content.add(buildSpinnerRow("Margin Left", oc.getMarginLeft(), 0, 200, v -> {
+            oc.setMarginLeft(v);
+            plugin.onOverlayConfigChanged();
+        }));
+        content.add(buildSpinnerRow("Margin Right", oc.getMarginRight(), 0, 200, v -> {
+            oc.setMarginRight(v);
+            plugin.onOverlayConfigChanged();
+        }));
 
         // Delete button
         content.add(createStrut(6));

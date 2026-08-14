@@ -30,6 +30,8 @@ public class OverlayConfig {
     private int widgetWidth;
     private int marginTop;
     private int marginBottom;
+    private int marginLeft;
+    private int marginRight;
     private boolean dynamicHeight;
     private boolean hideDuplicateCount;
     private boolean contextualColours;
@@ -50,6 +52,8 @@ public class OverlayConfig {
         this.widgetWidth = 512;
         this.marginTop = 0;
         this.marginBottom = 0;
+        this.marginLeft = 0;
+        this.marginRight = 0;
         this.dynamicHeight = false;
         this.hideDuplicateCount = false;
         this.contextualColours = true;
@@ -150,6 +154,22 @@ public class OverlayConfig {
 
     public void setMarginBottom(int marginBottom) {
         this.marginBottom = Math.max(0, Math.min(200, marginBottom));
+    }
+
+    public int getMarginLeft() {
+        return marginLeft;
+    }
+
+    public void setMarginLeft(int marginLeft) {
+        this.marginLeft = Math.max(0, Math.min(200, marginLeft));
+    }
+
+    public int getMarginRight() {
+        return marginRight;
+    }
+
+    public void setMarginRight(int marginRight) {
+        this.marginRight = Math.max(0, Math.min(200, marginRight));
     }
 
     public boolean isDynamicHeight() {

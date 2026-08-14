@@ -165,8 +165,13 @@ public class DynamicChatOverlay extends Overlay {
 
         int marginTop = overlayConfig.getMarginTop();
         int marginBottom = overlayConfig.getMarginBottom();
+        int marginLeft = overlayConfig.getMarginLeft();
+        int marginRight = overlayConfig.getMarginRight();
 
         widgetHeight += marginTop + marginBottom + bgPadding * 2;
+        // Grow the box by the horizontal margins, mirroring widgetHeight above. Text was already
+        // wrapped at the pre-margin width, so the margins become empty space on either side.
+        widgetWidth += marginLeft + marginRight;
 
         if (followPlayer) {
             Player localPlayer = client.getLocalPlayer();
@@ -198,7 +203,7 @@ public class DynamicChatOverlay extends Overlay {
 
         if (inputSegments != null) {
             drawSegments(graphics, inputSegments, 255, y, followPlayer, widgetWidth, bgPadding,
-                    fontSize, metrics, modIcons, drawShadow);
+                    marginLeft, marginRight, fontSize, metrics, modIcons, drawShadow);
             y -= lineHeight;
         }
 
@@ -208,7 +213,7 @@ public class DynamicChatOverlay extends Overlay {
                 continue;
             }
             drawSegments(graphics, line.segments, line.alpha, y, followPlayer, widgetWidth, bgPadding,
-                    fontSize, metrics, modIcons, drawShadow);
+                    marginLeft, marginRight, fontSize, metrics, modIcons, drawShadow);
             y -= lineHeight;
         }
 
@@ -298,10 +303,14 @@ public class DynamicChatOverlay extends Overlay {
     }
 
     private void drawSegments(Graphics2D graphics, List<TextSegment> segments, int alpha, int y,
-            boolean followPlayer, int widgetWidth, int xPad, FontSize fontSize, FontMetrics metrics,
-            IndexedSprite[] modIcons, boolean drawShadow) {
+            boolean followPlayer, int widgetWidth, int xPad, int marginLeft, int marginRight,
+            FontSize fontSize, FontMetrics metrics, IndexedSprite[] modIcons, boolean drawShadow) {
         int lineWidth = calculateLineWidth(segments, metrics);
-        int x = followPlayer ? xPad + (widgetWidth - xPad * 2 - lineWidth) / 2 : xPad;
+        // Left-anchor at the left margin, or centre within the content region (box minus both
+        // margins) when following the player — mirroring how marginBottom offsets the baseline.
+        int x = followPlayer
+                ? marginLeft + xPad + (widgetWidth - marginLeft - marginRight - xPad * 2 - lineWidth) / 2
+                : xPad + marginLeft;
         for (TextSegment segment : segments) {
             if (segment.iconId >= 0) {
                 BufferedImage img = ChatRenderUtils.getModIconImage(segment.iconId, modIcons);
