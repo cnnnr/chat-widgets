@@ -231,6 +231,10 @@ public class ChatWidgetPanel extends PluginPanel {
             oc.setShowInputPreview(v);
             plugin.onOverlayConfigChanged();
         }));
+        content.add(buildCheckbox("Preview Only While Typing", oc.isPreviewOnlyWhenTyping(), v -> {
+            oc.setPreviewOnlyWhenTyping(v);
+            plugin.onOverlayConfigChanged();
+        }));
         content.add(buildComboRow("Font Size", FontSize.values(), oc.getFontSize(), v -> {
             oc.setFontSize(v);
             plugin.onOverlayConfigChanged();
