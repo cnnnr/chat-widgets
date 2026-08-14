@@ -58,7 +58,8 @@ public class ChatMessageFilter {
         String normalized = maybeStripAccents(message
                 .replace('\u00A0', ' ')
                 .replace("<lt>", "<")
-                .replace("<gt>", ">"));
+                .replace("<gt>", ">")
+                .replace("<at>", "@"));
 
         for (Pattern pattern : patterns) {
             if (pattern.matcher(normalized).find()) {
