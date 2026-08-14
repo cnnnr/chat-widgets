@@ -44,6 +44,11 @@ task run(type: JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = 'com.chatwidgets.ChatWidgetPluginTest'
 	jvmArgs '-ea'
+	// macOS-only: com.apple.eawt doesn't exist on Windows/Linux JDKs, where the flag would print a
+	// JVM startup warning on every launch. jvmArgs() appends, so this adds the flag only on mac.
+	if (System.getProperty('os.name').toLowerCase().startsWith('mac')) {
+		jvmArgs '--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED'
+	}
 	args '--developer-mode'
 }
 
