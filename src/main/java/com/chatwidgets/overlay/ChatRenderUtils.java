@@ -328,7 +328,7 @@ public final class ChatRenderUtils {
             return segments;
         }
 
-        text = text.replace("<lt>", "<").replace("<gt>", ">");
+        text = text.replace("<lt>", "<").replace("<gt>", ">").replace("<at>", "@");
 
         Matcher matcher = IMG_TAG_PATTERN.matcher(text);
         int lastEnd = 0;
@@ -446,6 +446,10 @@ public final class ChatRenderUtils {
                 i += 4;
             } else if (text.startsWith("<gt>", i)) {
                 currentText.append('>');
+                i += 4;
+            } else if (text.startsWith("<at>", i)) {
+                // RuneLite escapes a literal '@' as <at> so it isn't parsed as an @col@ colour code.
+                currentText.append('@');
                 i += 4;
             } else {
                 Matcher colUnknownMatcher = COL_UNKNOWN_PATTERN.matcher(text.substring(i));
