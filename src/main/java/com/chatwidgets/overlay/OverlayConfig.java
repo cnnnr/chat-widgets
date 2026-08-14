@@ -35,6 +35,7 @@ public class OverlayConfig {
     private boolean contextualColours;
     private boolean showTimestamp;
     private boolean showInputPreview;
+    private boolean previewOnlyWhenTyping;
     private boolean show;
     private boolean alwaysVisible;
     private FontSize fontSize;
@@ -55,6 +56,7 @@ public class OverlayConfig {
         this.contextualColours = true;
         this.showTimestamp = false;
         this.showInputPreview = false;
+        this.previewOnlyWhenTyping = false;
         this.show = true;
         this.alwaysVisible = false;
         this.fontSize = FontSize.REGULAR;
@@ -190,6 +192,14 @@ public class OverlayConfig {
 
     public void setShowInputPreview(boolean showInputPreview) {
         this.showInputPreview = showInputPreview;
+    }
+
+    public boolean isPreviewOnlyWhenTyping() {
+        return previewOnlyWhenTyping;
+    }
+
+    public void setPreviewOnlyWhenTyping(boolean previewOnlyWhenTyping) {
+        this.previewOnlyWhenTyping = previewOnlyWhenTyping;
     }
 
     public FontSize getFontSize() {

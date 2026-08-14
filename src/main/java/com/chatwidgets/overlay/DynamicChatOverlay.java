@@ -337,6 +337,11 @@ public class DynamicChatOverlay extends Overlay {
         }
 
         boolean hasTyped = typed != null && !typed.isEmpty();
+        // When this widget only wants the preview while typing, suppress the idle "Press Enter to
+        // Chat..." prompt: show nothing until the first character is typed.
+        if (overlayConfig.isPreviewOnlyWhenTyping() && !hasTyped) {
+            return null;
+        }
         Color nameColor = Color.WHITE;
         Color messageColor = hasTyped ? globalConfig.publicColour() : Color.WHITE;
 
