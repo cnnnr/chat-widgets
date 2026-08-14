@@ -1,13 +1,13 @@
 # Chat Widgets
 
-**Version 1.2.1**
+**Version 1.3.0**
 
 Create custom chat widgets that display any combination of message types. Each widget is independently configurable with its own message filters, positioning, fade behaviour, and more. Manage widgets from the sidebar panel — add, remove, reorder, and configure as many as you need.
 
 ## What's New
 
-- New per-widget settings: Margin Left, Margin Right
-- Emoji support
+- New per-widget settings: Margin Left, Margin Right, Hide Input Preview Unless Typing
+- Emoji support (requires Emojis plugin to be enabled)
 
 ## Examples
 
