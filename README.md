@@ -1,13 +1,22 @@
 # Chat Widgets
 
-**Version 1.3.0**
+**Version 1.4.0**
 
 Create custom chat widgets that display any combination of message types. Each widget is independently configurable with its own message filters, positioning, fade behaviour, and more. Manage widgets from the sidebar panel — add, remove, reorder, and configure as many as you need.
 
 ## What's New
 
-- New per-widget settings: Margin Left, Margin Right, Hide Input Preview Unless Typing
-- Emoji support (requires Emojis plugin to be enabled)
+- Support for in-game formatting: underline, strikethrough, coloured shadows, and template variables in clan broadcasts.
+- Clan rank icons in main, guest, and Group Ironman chat.
+- Channel-name tags for clan notifications and a label for broadcast messages.
+
+## Bug Fixes
+
+- Fixed raw colour-macro prefixes appearing in game messages, including potion warnings and Araxxor messages. Colours are also preserved after emoji and chat-command updates.
+- Removed hidden message payloads such as `CA_ID` prefixes and pipe separators from game, clan, GIM, and broadcast messages.
+- Fixed the one-frame text jump when messages finish fading in positioned widgets with Dynamic Height enabled.
+- Friend login/logout notifications now respect the in-game Off setting and use the widget's fade duration and message limit when visible.
+- Fixed literal leading pipes being removed from GIM chat and invalid negative icon IDs creating unexpected line breaks.
 
 ## Examples
 
