@@ -14,6 +14,10 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.MessageNode;
 import net.runelite.api.Point;
+import net.runelite.api.clan.ClanID;
+import net.runelite.api.clan.ClanMember;
+import net.runelite.api.clan.ClanSettings;
+import net.runelite.api.clan.ClanTitle;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
@@ -30,6 +34,7 @@ import net.runelite.client.config.ChatColorConfig;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.OverlayMenuClicked;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.game.ChatIconManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
@@ -79,6 +84,8 @@ public class ChatWidgetPlugin extends Plugin {
     private static final int MAX_POOL_SIZE = 200;
 
     private static final Pattern BOSS_KC_PATTERN = Pattern.compile("Your .+ count is:");
+    /** Strips {@code <img=N>} icon tags from a name before clan-member lookup. */
+    private static final Pattern IMG_TAG_PATTERN = Pattern.compile("<img=\\d+>");
     private static final MessageMergeRule[] MESSAGE_MERGE_RULES = {
             new MessageMergeRule("You eat", "It heals some health.", true),
             new MessageMergeRule("You drink", Pattern.compile("You have [0-9].*")),
@@ -175,6 +182,9 @@ public class ChatWidgetPlugin extends Plugin {
 
     @Inject
     private ColorPickerManager colorPickerManager;
+
+    @Inject
+    private ChatIconManager chatIconManager;
 
     // Shared message pool
     private final CopyOnWriteArrayList<WidgetMessage> messages = new CopyOnWriteArrayList<>();
@@ -612,6 +622,16 @@ public class ChatWidgetPlugin extends Plugin {
             }
         }
 
+        // Raw capture-time body, snapshotted before macro expansion. Pending-update change
+        // detection compares this against the live node value (also raw), so expanding it first
+        // would register as a spurious node change next tick and rebuild the body from raw text.
+        String rawBody = message;
+
+        // Expand OSRS colour macros (@blu@, @mes_hl_blu@, ...) into <col=RRGGBB> tags so the render
+        // pipeline colours them. Done after the emoji seeding above (so a node-sourced body is
+        // covered too) and mirrored in rebuildPooledMessage so the reconcile pass keeps colours.
+        message = client.macroExpand(message);
+
         // Drop messages matching the Chat Filter plugin's lists — only while that plugin is enabled.
         if (config.useChatFilter() && isChatFilterEnabled() && chatMessageFilter.matches(message)) {
             return;
@@ -658,6 +678,22 @@ public class ChatWidgetPlugin extends Plugin {
             }
         }
 
+        // Prepend the sender's clan rank icon for clan chat lines (main, guest, and GIM channels).
+        ClanSettings clanSettings = clanSettingsForType(type);
+        if (clanSettings != null && sender != null) {
+            String cleanSenderName = IMG_TAG_PATTERN.matcher(sender).replaceAll("").trim();
+            ClanMember member = clanSettings.findMember(cleanSenderName);
+            if (member != null) {
+                ClanTitle title = clanSettings.titleForRank(member.getRank());
+                if (title != null) {
+                    int iconNumber = chatIconManager.getIconNumber(title);
+                    if (iconNumber != -1) {
+                        sender = "<img=" + iconNumber + ">" + sender;
+                    }
+                }
+            }
+        }
+
         // Create the new message
         WidgetMessage newMsg;
         if (type == ChatMessageType.LOGINLOGOUTNOTIFICATION) {
@@ -685,12 +721,12 @@ public class ChatWidgetPlugin extends Plugin {
 
         // Track potential chat commands for delayed updates by Chat Commands plugin; otherwise
         // watch emoji-eligible messages for the Emojis plugin's next-tick <img=N> conversion.
-        if (messageNode != null && message.startsWith("!")) {
+        if (messageNode != null && rawBody.startsWith("!")) {
             pendingUpdates.add(new PendingMessageUpdate(
-                    newMsg, messageNode, COMMAND_VALUE, message, COMMAND_UPDATE_TICKS));
+                    newMsg, messageNode, COMMAND_VALUE, rawBody, COMMAND_UPDATE_TICKS));
         } else if (emojiWatched && messageNode != null) {
             pendingUpdates.add(new PendingMessageUpdate(
-                    newMsg, messageNode, EMOJI_VALUE, message, EMOJI_UPDATE_TICKS));
+                    newMsg, messageNode, EMOJI_VALUE, rawBody, EMOJI_UPDATE_TICKS));
         }
     }
 
@@ -739,6 +775,9 @@ public class ChatWidgetPlugin extends Plugin {
         if (idx < 0) {
             return;
         }
+        // The rewritten node value is raw, so re-expand colour macros here too. Otherwise the
+        // reconcile pass (e.g. an Emojis <img=N> rewrite) would drop the colours resolved at capture.
+        newBody = client.macroExpand(newBody);
         WidgetMessage updated;
         if (old.getSender() != null) {
             updated = WidgetMessage.senderMessage(
@@ -895,6 +934,25 @@ public class ChatWidgetPlugin extends Plugin {
             return null;
         }
         return name.replace('\u00A0', ' ').trim();
+    }
+
+    /**
+     * The {@link ClanSettings} backing a clan-chat message type, used to resolve a sender's rank
+     * icon. Guest clan chat reads the guest settings; GIM clan chat the {@link ClanID#GROUP_IRONMAN}
+     * settings; ordinary clan chat the main clan. Returns {@code null} for non-clan types and when
+     * the relevant clan data isn't loaded.
+     */
+    private ClanSettings clanSettingsForType(ChatMessageType type) {
+        switch (type) {
+            case CLAN_CHAT:
+                return client.getClanSettings();
+            case CLAN_GUEST_CHAT:
+                return client.getGuestClanSettings();
+            case CLAN_GIM_CHAT:
+                return client.getClanSettings(ClanID.GROUP_IRONMAN);
+            default:
+                return null;
+        }
     }
 
     private String tryMergeMessages(String previousMessage, String newMessage) {
