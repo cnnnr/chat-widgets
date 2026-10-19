@@ -86,6 +86,7 @@ public class ChatWidgetPlugin extends Plugin {
     private static final String PLUGIN_VERSION = "1.2.0";
     private static final String LAST_UPDATE_NOTICE_VERSION_KEY = "lastUpdateNoticeVersion";
     private static final int MAX_POOL_SIZE = 200;
+    private static final long LOGIN_LOGOUT_TIMEOUT_MS = 5000;
 
     // enum_63: base-36 broadcast link key -> URL (cs2 chat_broadcast_parseurl).
     private static final int BROADCAST_URL_ENUM = 63;
@@ -949,7 +950,9 @@ public class ChatWidgetPlugin extends Plugin {
         long fadeOutThreshold = fadeOutDuration > 0 ? (fadeOutDuration * 2000L) + 2000 : 0;
         boolean gameFilterEnabled = isGameFilterEnabled();
         boolean bossKcFilterEnabled = isBossKcFilterEnabled();
-        boolean loginLogoutHidden = isLoginLogoutHidden();
+        int loginLogoutSetting = getLoginLogoutSetting();
+        // Widgets that never fade still drop login/logout notices when the game setting is Timeout.
+        long loginTimeout = fadeOutThreshold == 0 && loginLogoutSetting == 0 ? LOGIN_LOGOUT_TIMEOUT_MS : 0;
 
         int maxMessages = overlayConfig.getMaxMessages();
         List<WidgetMessage> filtered = new ArrayList<>(maxMessages);
@@ -974,7 +977,8 @@ public class ChatWidgetPlugin extends Plugin {
                 continue;
             }
 
-            if (loginLogoutHidden && msg.getType() == ChatMessageType.LOGINLOGOUTNOTIFICATION) {
+            if (msg.getType() == ChatMessageType.LOGINLOGOUTNOTIFICATION && (loginLogoutSetting == 2
+                    || (loginTimeout > 0 && currentTime - msg.getTimestamp() >= loginTimeout))) {
                 continue;
             }
 
@@ -1116,14 +1120,12 @@ public class ChatWidgetPlugin extends Plugin {
     }
 
     /**
-     * True when the in-game "Friend login/logout messages" setting is Off. Mirrors cs2
-     * {@code ~loginlogout_setting_get}: 0 = timeout, 1 = always shown, 2 = off. Timeout vs always
-     * is ignored; the widget's own fade setting governs those.
+     * The in-game "Friend login/logout messages" setting. Mirrors cs2
+     * {@code ~loginlogout_setting_get}: 0 = timeout, 1 = always shown, 2 = off.
      */
-    public boolean isLoginLogoutHidden() {
+    public int getLoginLogoutSetting() {
         int permanent = client.getVarbitValue(VarbitID.LOGINLOGOUT_PERMANENT);
-        int setting = permanent != 0 ? permanent : client.getVarbitValue(VarbitID.LOGINLOGOUT_SETTING);
-        return setting == 2;
+        return permanent != 0 ? permanent : client.getVarbitValue(VarbitID.LOGINLOGOUT_SETTING);
     }
 
     private void updateDefaultPosition(net.runelite.client.ui.overlay.Overlay overlay) {
