@@ -86,7 +86,8 @@ public class ChatWidgetPlugin extends Plugin {
     private static final String PLUGIN_VERSION = "1.2.0";
     private static final String LAST_UPDATE_NOTICE_VERSION_KEY = "lastUpdateNoticeVersion";
     private static final int MAX_POOL_SIZE = 200;
-    private static final long LOGIN_LOGOUT_TIMEOUT_MS = 5000;
+    // cs2 pm_filtertest drops login/logout notices 500 client ticks (10s) after they arrive.
+    private static final long LOGIN_LOGOUT_TIMEOUT_MS = 10_000;
 
     // enum_63: base-36 broadcast link key -> URL (cs2 chat_broadcast_parseurl).
     private static final int BROADCAST_URL_ENUM = 63;
